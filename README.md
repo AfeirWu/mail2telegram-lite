@@ -11,7 +11,15 @@
 - **直观的阅读体验**：在 Telegram 消息气泡内直接展示纯文字排版预览。
 - **完美 HTML 渲染**：点击消息底部的按钮，即可在自定义域名下丝滑查看完整邮件排版（7天自动阅后即焚清理）。
 
-## 🚀 部署指南 (3 分钟搞定)
+## 🚀 一键部署 (推荐)
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/AfeirWu/mail2telegram-lite)
+
+点击上方按钮，即可自动将此 Worker 部署到你的 Cloudflare 账号。部署后请参考下方「配置环境变量」和「绑定 KV 数据库」步骤完成设置。
+
+---
+
+## 🚀 手动部署指南 (3 分钟搞定)
 
 ### 1. 准备工作
 - 一个托管在 Cloudflare 的域名。
