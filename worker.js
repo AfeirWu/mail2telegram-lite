@@ -51,9 +51,12 @@ export default {
     const rawEmail = await new Response(message.raw).text();
     const { textBody, htmlBody } = parseEmail(rawEmail);
 
+    // 确保始终有 HTML 内容可展示：将纯文本转为保留格式的 HTML
+    const displayHtml = htmlBody || `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:monospace;white-space:pre-wrap;word-wrap:break-word;padding:20px;line-height:1.6;}</style></head><body>${escapeHtml(textBody)}</body></html>`;
+
     // 将完整 HTML 存入 KV 数据库 (设置 7 天自动销毁)
     const mailId = crypto.randomUUID();
-    await env.DB.put(mailId, htmlBody || "<p>This email contains only plain text.</p>", { expirationTtl: 604800 });
+    await env.DB.put(mailId, displayHtml, { expirationTtl: 604800 });
 
     // 截取 TG 消息正文预览 (TG 单条消息有长度限制)
     let preview = textBody;
@@ -62,7 +65,7 @@ export default {
     }
 
     // 拼装 TG 消息格式 (极简排版)
-    const text = `📧 Gmail邮件通知\n\n主题: ${subject}\n\n正文:\n${preview}\n\n---\n发件人: ${realFrom}`;
+    const text = `📧 Gmail邮件通知\n\n主题:\n${subject}\n\n正文:\n${preview}\n\n---\n发件人: ${realFrom}`;
 
     // 调用 Telegram API 发送消息并附带内联按钮
     const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
@@ -86,26 +89,70 @@ export default {
 function parseEmail(raw) {
   let textBody = "";
   let htmlBody = "";
-  
+
   try {
-    let parts = raw.split(/--[\w-=_]+/);
-    for (let part of parts) {
-      if (part.toLowerCase().includes("content-type: text/plain")) {
-         textBody = decodePart(part);
-      }
-      if (part.toLowerCase().includes("content-type: text/html")) {
-         htmlBody = decodePart(part);
-      }
-    }
-    
-    // 降级处理：如果没有纯文本版本，强行从 HTML 剥离标签作为预览
-    if (!textBody && htmlBody) {
-        textBody = htmlBody.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, '\n').replace(/\n\s*\n/g, '\n').trim();
-    }
-    // 降级处理：非复杂多段结构的邮件
-    if (!htmlBody && raw.toLowerCase().includes("content-type: text/html")) {
+    // 获取 Content-Type 判断邮件类型
+    const contentTypeMatch = raw.match(/content-type:\s*([^\r\n]+)/i);
+    const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : '';
+
+    // 检测是否为 multipart 邮件
+    const isMultipart = raw.match(/boundary=["']?([^"'\r\n]+)["']?/i);
+
+    // 单段式邮件（不是 multipart）
+    if (!isMultipart) {
+      if (contentType.includes('text/html')) {
         htmlBody = decodePart(raw);
-        textBody = htmlBody.replace(/<[^>]+>/g, '\n').trim();
+        textBody = stripHtml(htmlBody);
+      } else if (contentType.includes('text/plain')) {
+        textBody = decodePart(raw);
+      }
+      // 其他情况（attachments 等），尝试在 raw 中找 HTML/plain 部分
+      if (!htmlBody && !textBody) {
+        if (contentType.includes('text/html') || raw.toLowerCase().includes('content-type: text/html')) {
+          htmlBody = decodePart(raw);
+          textBody = stripHtml(htmlBody);
+        } else if (contentType.includes('text/plain') || raw.toLowerCase().includes('content-type: text/plain')) {
+          textBody = decodePart(raw);
+        }
+      }
+      return {
+        textBody: textBody.trim() || "No preview available.",
+        htmlBody: htmlBody
+      };
+    }
+
+    // 多段式邮件解析：先用 boundary 分割
+    let boundary = isMultipart[1];
+    // 转义 boundary 中的特殊字符用于正则
+    let escapedBoundary = boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let parts = raw.split(new RegExp(`--${escapedBoundary}`));
+
+    for (let part of parts) {
+      if (!part || part.trim() === '') continue;
+
+      const partLower = part.toLowerCase();
+      const partTypeMatch = part.match(/content-type:\s*([^\r\n]+)/i);
+      const partType = partTypeMatch ? partTypeMatch[1].toLowerCase() : '';
+
+      // 跳过附件
+      if (partType.includes('multipart') || partType.includes('image') || partType.includes('application')) {
+        continue;
+      }
+
+      if (partType.includes('text/plain') && !textBody) {
+        textBody = decodePart(part);
+      } else if (partType.includes('text/html') && !htmlBody) {
+        htmlBody = decodePart(part);
+      }
+    }
+
+    // 降级处理：如果没有纯文本版本，从 HTML 剥离标签作为预览
+    if (!textBody && htmlBody) {
+      textBody = stripHtml(htmlBody);
+    }
+    // 降级处理：如果没有 HTML 但有纯文本
+    if (!htmlBody && textBody) {
+      // 不再自动生成 HTML，保持 htmlBody 为空，让外层处理
     }
   } catch (e) {
     console.error("Parse Error:", e);
@@ -115,6 +162,21 @@ function parseEmail(raw) {
     textBody: textBody.trim() || "No preview available.",
     htmlBody: htmlBody
   };
+}
+
+function stripHtml(html) {
+  return html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<[^>]+>/g, '\n')
+            .replace(/\n\s*\n/g, '\n')
+            .trim();
+}
+
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;')
+             .replace(/</g, '&lt;')
+             .replace(/>/g, '&gt;')
+             .replace(/"/g, '&quot;')
+             .replace(/'/g, '&#039;');
 }
 
 function decodePart(part) {
