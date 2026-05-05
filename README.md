@@ -1,5 +1,7 @@
 # 📧 Mail2Telegram Lite (Cloudflare Worker)
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/AfeirWu/mail2telegram-lite)
+
 一个极简、优雅、纯 Serverless 的 Gmail 转发至 Telegram 解决方案。
 告别繁琐的 OAuth 认证、告别臃肿的 Webhook 交互配置。**只做一件事：毫秒级提取你的邮件正文，推送到 Telegram，并提供精美的网页版原文预览。**
 
