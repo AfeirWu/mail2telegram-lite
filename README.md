@@ -19,7 +19,11 @@
 ### 2. 部署 Worker
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/AfeirWu/mail2telegram-lite)
 
-点击上方按钮即可快速部署。关联 GitHub 后，Cloudflare 会自动监听仓库，当有新的提交推送到 `main` 分支时，将自动部署最新代码。
+**方式一（一键部署）：** 点击上方按钮即可快速部署。关联 GitHub 后，Cloudflare 会自动监听仓库，有新提交推送到 `main` 分支时自动部署。
+
+**方式二（手动部署）：**
+1. 在 Cloudflare 控制台新建一个 Worker。
+2. 复制本仓库 `worker.js` 中的代码，粘贴到 Worker 编辑器中并部署。
 
 ### 3. 配置环境变量 (Variables)
 在 Worker 的 `Settings -> Variables & Secrets` 中添加以下变量：
