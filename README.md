@@ -19,7 +19,7 @@
 ### 2. 部署 Worker
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/AfeirWu/mail2telegram-lite)
 
-**方式一（一键部署）：** 点击上方按钮即可快速部署。关联 GitHub 后，Cloudflare 会自动监听仓库，有新提交推送到 `main` 分支时自动部署。
+**方式一（一键部署）：** 点击上方按钮即可快速部署。
 
 **方式二（手动部署）：**
 1. 在 Cloudflare 控制台新建一个 Worker。
@@ -40,4 +40,16 @@
 ### 5. 设置邮件路由 (Email Routing)
 在你的域名管理中，进入 `Email Routing`，添加一条路由规则，将你想接收邮件的地址（如 `alert@yourdomain.com`）转发到你刚刚部署的 Worker。
 
-最后，去你的主力邮箱设置自动转发即可！Enjoy! 🎉
+### 6. 设置邮件自动转发 (以 Gmail 为例)
+
+1. 打开 [Gmail 设置页面](https://mail.google.com/mail/u/0/#settings/accounts)
+2. 进入「账户和导入」标签页
+3. 在「查看其他 Google 账户的设置」中选择你要转发的邮箱
+4. 找到「转发和 POP/IMAP」部分，点击「添加转发地址」
+5. 输入你在 Cloudflare Email Routing 中设置的目标邮箱（如 `alert@yourdomain.com`）
+6. Gmail 会向该地址发送验证邮件，前往 CF Email Routing 的收件箱确认
+7. 验证成功后，返回 Gmail，选择「将副本转发至」，选择刚才添加的转发地址
+8. 可选：选择「删除 Gmail 的副本」或「保留 Gmail 的副本」
+9. 保存设置
+
+完成以上步骤后，当有邮件发送到你的转发地址，Cloudflare 会自动将其转发到 Worker，Worker 解析后推送到 Telegram。Enjoy! 🎉
