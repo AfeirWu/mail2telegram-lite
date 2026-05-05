@@ -51,21 +51,28 @@ export default {
     const rawEmail = await new Response(message.raw).text();
     const { textBody, htmlBody } = parseEmail(rawEmail);
 
-    // 确保始终有 HTML 内容可展示：将纯文本转为保留格式的 HTML
-    const displayHtml = htmlBody || `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:monospace;white-space:pre-wrap;word-wrap:break-word;padding:20px;line-height:1.6;}</style></head><body>${escapeHtml(textBody)}</body></html>`;
-
-    // 将完整 HTML 存入 KV 数据库 (设置 7 天自动销毁)
-    const mailId = crypto.randomUUID();
-    await env.DB.put(mailId, displayHtml, { expirationTtl: 604800 });
+    // KV 可选：绑定了则支持查看完整邮件功能
+    const mailId = env.DB ? crypto.randomUUID() : null;
+    if (env.DB) {
+      const displayHtml = htmlBody || `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:monospace;white-space:pre-wrap;word-wrap:break-word;padding:20px;line-height:1.6;}</style></head><body>${escapeHtml(textBody)}</body></html>`;
+      await env.DB.put(mailId, displayHtml, { expirationTtl: 604800 });
+    }
 
     // 截取 TG 消息正文预览 (TG 单条消息有长度限制)
     let preview = textBody;
     if (preview.length > 2500) {
-      preview = preview.substring(0, 2500) + "\n\n... [Content truncated, click the button below to view full email]";
+      preview = preview.substring(0, 2500) + "\n\n... [Content truncated]";
     }
 
     // 拼装 TG 消息格式 (极简排版)
     const text = `📧 Gmail邮件通知\n\n主题:\n${subject}\n\n正文:\n${preview}\n\n---\n发件人: ${realFrom}`;
+
+    // 构建内联按钮（KV 未绑定时隐藏"查看完整邮件"按钮）
+    const replyMarkup = mailId ? {
+      inline_keyboard: [[
+        { text: "🌐 查看完整邮件内容", url: `https://${DOMAIN}/mail/${mailId}` }
+      ]]
+    } : undefined;
 
     // 调用 Telegram API 发送消息并附带内联按钮
     const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
@@ -75,11 +82,7 @@ export default {
       body: JSON.stringify({
         chat_id: CHAT_ID,
         text: text,
-        reply_markup: {
-          inline_keyboard: [[
-            { text: "🌐 查看完整邮件内容", url: `https://${DOMAIN}/mail/${mailId}` }
-          ]]
-        }
+        reply_markup: replyMarkup
       })
     });
   }
