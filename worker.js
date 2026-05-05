@@ -19,7 +19,7 @@ export default {
     // 处理”查看完整网页版邮件”的请求
     if (url.pathname.startsWith('/mail/')) {
       if (!env.DB) {
-        return new Response(“<h2>Web Preview Not Enabled</h2><p>Please bind KV database in Worker settings to enable this feature.</p>”, {
+        return new Response('<h2>Web Preview Not Enabled</h2><p>Please bind KV database in Worker settings to enable this feature.</p>', {
           status: 503,
           headers: { 'Content-Type': 'text/html; charset=utf-8' }
         });
