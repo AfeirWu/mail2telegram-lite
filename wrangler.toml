@@ -1,8 +1,0 @@
-name = "mail2telegram-lite"
-main = "worker.js"
-compatibility_date = "2024-01-01"
-
-[vars]
-TELEGRAM_TOKEN = ""
-TELEGRAM_ID = ""
-DOMAIN = ""
