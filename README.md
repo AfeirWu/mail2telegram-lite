@@ -1,7 +1,5 @@
 # 📧 Mail2Telegram Lite (Cloudflare Worker)
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/AfeirWu/mail2telegram-lite)
-
 一个极简、优雅、纯 Serverless 的 Gmail 转发至 Telegram 解决方案。
 告别繁琐的 OAuth 认证、告别臃肿的 Webhook 交互配置。**只做一件事：毫秒级提取你的邮件正文，推送到 Telegram，并提供精美的网页版原文预览。**
 
@@ -11,17 +9,7 @@
 - **直观的阅读体验**：在 Telegram 消息气泡内直接展示纯文字排版预览。
 - **完美 HTML 渲染**：点击消息底部的按钮，即可在自定义域名下丝滑查看完整邮件排版（7天自动阅后即焚清理）。
 
-## 🚀 一键部署
-
-点击下方按钮，即可将此 Worker 部署到你的 Cloudflare 账号。部署后请参考「配置环境变量」和「绑定 KV 数据库」步骤完成设置。
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/AfeirWu/mail2telegram-lite)
-
-关联 GitHub 后，Cloudflare 会自动监听你的仓库，当有新的提交推送到 `main` 分支时，将自动部署最新代码。
-
----
-
-## 🚀 手动部署指南 (3 分钟搞定)
+## 🚀 部署指南 (3 分钟搞定)
 
 ### 1. 准备工作
 - 一个托管在 Cloudflare 的域名。
@@ -29,8 +17,9 @@
 - 你的 Telegram 账号 ID。
 
 ### 2. 部署 Worker
-1. 在 Cloudflare 控制台新建一个 Worker。
-2. 复制 `worker.js` 中的代码，粘贴并部署。
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/AfeirWu/mail2telegram-lite)
+
+点击上方按钮即可快速部署。关联 GitHub 后，Cloudflare 会自动监听仓库，当有新的提交推送到 `main` 分支时，将自动部署最新代码。
 
 ### 3. 配置环境变量 (Variables)
 在 Worker 的 `Settings -> Variables & Secrets` 中添加以下变量：
