@@ -60,7 +60,14 @@ export default {
     // KV 可选：绑定了则支持查看完整邮件功能
     const mailId = env.DB ? crypto.randomUUID() : null;
     if (env.DB) {
-      const displayHtml = htmlBody || `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:monospace;white-space:pre-wrap;word-wrap:break-word;padding:20px;line-height:1.6;}</style></head><body>${escapeHtml(textBody)}</body></html>`;
+      let displayHtml;
+      if (htmlBody) {
+        // 保留原邮件 HTML，包裹一层响应式容器
+        displayHtml = buildEmailPage(htmlBody, { subject, from: realFrom });
+      } else {
+        // 纯文本邮件，生成简洁的阅读页面
+        displayHtml = buildTextPage(textBody, { subject, from: realFrom });
+      }
       await env.DB.put(mailId, displayHtml, { expirationTtl: 604800 });
     }
 
@@ -208,4 +215,143 @@ function decodePart(part) {
        } catch(e) { return body; }
    }
    return body;
+}
+
+// ================= 构建邮件 HTML 预览页面 =================
+function buildEmailPage(htmlBody, meta) {
+  const { subject, from } = meta;
+  const escapedSubject = escapeHtml(subject);
+  const escapedFrom = escapeHtml(from);
+
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapedSubject}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background-color: #f6f6f6; }
+    .email-container {
+      max-width: 700px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      min-height: 100vh;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .email-header {
+      background-color: #f6f6f6;
+      border-bottom: 1px solid #e8e8e8;
+      padding: 16px 24px;
+    }
+    .email-header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+    .email-meta {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.6;
+    }
+    .email-meta strong {
+      color: #333;
+    }
+    .email-body {
+      padding: 0;
+      word-break: break-word;
+      overflow-wrap: break-word;
+    }
+    .email-body img {
+      max-width: 100%;
+      height: auto;
+    }
+    .email-body a {
+      color: #1a73e8;
+    }
+    /* Gmail 风格内联样式重置 */
+    .email-body p { margin: 0 0 1em 0; }
+    .email-body div[style*="font-size"] { font-size: 14px !important; }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="email-header">
+      <h1>${escapedSubject}</h1>
+      <div class="email-meta">
+        <strong>发件人：</strong>${escapedFrom}
+      </div>
+    </div>
+    <div class="email-body">
+      ${htmlBody}
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function buildTextPage(textBody, meta) {
+  const { subject, from } = meta;
+  const escapedSubject = escapeHtml(subject);
+  const escapedFrom = escapeHtml(from);
+  const escapedBody = escapeHtml(textBody);
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapedSubject}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background-color: #f6f6f6; }
+    .email-container {
+      max-width: 700px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      min-height: 100vh;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .email-header {
+      background-color: #f6f6f6;
+      border-bottom: 1px solid #e8e8e8;
+      padding: 16px 24px;
+    }
+    .email-header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+    .email-meta {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.6;
+    }
+    .email-meta strong { color: #333; }
+    .email-body {
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #222;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="email-header">
+      <h1>${escapedSubject}</h1>
+      <div class="email-meta">
+        <strong>发件人：</strong>${escapedFrom}
+      </div>
+    </div>
+    <div class="email-body">${escapedBody}</div>
+  </div>
+</body>
+</html>`;
 }
