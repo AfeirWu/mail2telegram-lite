@@ -2,6 +2,7 @@
  * Cloudflare Worker - Mail2Telegram Lite
  * 一个极简、优雅、纯 Serverless 的 Gmail 转发至 Telegram 解决方案。
  * 支持内联网页预览，无多余数据库依赖。
+ * 测试自动部署 - 2026-05-07
  */
 
 export default {
