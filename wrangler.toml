@@ -6,4 +6,3 @@ keep_vars = true
 
 [[kv_namespaces]]
 binding = "DB"
-id = ""
