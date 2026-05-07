@@ -8,12 +8,9 @@
  * - cloud-mail: ShadowHtml 组件使用 iframe srcdoc 做样式隔离的思路
  */
 
-// ================= 依赖：使用 postal-mime 解析邮件 =================
-// 已在 wrangler.toml 中配置 externals = ["postal-mime"]
 import PostalMime from 'postal-mime';
 
 export default {
-  // ================= 1. HTTP 路由处理 (用于网页查看完整邮件) =================
   async fetch(request, env) {
     const url = new URL(request.url);
 
@@ -23,7 +20,6 @@ export default {
       });
     }
 
-    // 处理"查看完整网页版邮件"的请求
     if (url.pathname.startsWith('/mail/')) {
       if (!env.DB) {
         return new Response("<h2>网页预览功能未启用</h2><p>请在 Worker 设置中绑定 KV 数据库以启用此功能。</p>", {
@@ -45,7 +41,6 @@ export default {
     return new Response("Mail2Telegram Worker is running.", { status: 200 });
   },
 
-  // ================= 2. 邮件接收与推送处理 =================
   async email(message, env, ctx) {
     const BOT_TOKEN = env.TELEGRAM_TOKEN;
     const CHAT_ID = env.TELEGRAM_ID;
@@ -60,9 +55,7 @@ export default {
     const subject = message.headers.get("subject") || "No Subject";
 
     // 使用 postal-mime 解析邮件（参考 tbxark/mail2telegram）
-    // 注意：parse() 接收 ReadableStream，不是字符串
     const email = await PostalMime.parse(message.raw);
-
     const textBody = email.text || "";
     const htmlBody = email.html || "";
 
@@ -78,7 +71,7 @@ export default {
       await env.DB.put(mailId, displayHtml, { expirationTtl: 604800 });
     }
 
-    // 截取 TG 消息正文预览 (TG 单条消息有长度限制)
+    // 截取 TG 消息正文预览
     let preview = textBody;
     if (preview.length > 2500) {
       preview = preview.substring(0, 2500) + "\n\n... [Content truncated]";
@@ -106,21 +99,15 @@ export default {
 };
 
 // ================= 构建邮件 HTML 预览页面 =================
-// 参考 cloud-mail 的 ShadowHtml 组件：使用 iframe srcdoc 做样式隔离
-// iframe 内部是完全独立的 HTML 文档，邮件 CSS 不会影响外部页面
-
+// 参考 cloud-mail ShadowHtml 组件：使用 iframe srcdoc 做样式隔离
 function buildEmailPage(htmlBody, meta) {
   const { subject, from } = meta;
   const escapedSubject = escapeHtml(subject);
   const escapedFrom = escapeHtml(from);
 
-  // 提取邮件正文内容
-  const emailContent = extractEmailBody(htmlBody);
+  // buildIframeContent 内部处理：sanitize + 提取 body + 重置样式 + 纯文本判断
+  const iframeHtml = buildIframeContent(htmlBody);
 
-  // 构建 iframe 内部 HTML（参考 cloud-mail ShadowHtml 的处理方式）
-  const iframeHtml = buildIframeContent(emailContent);
-
-  // 外部容器（header + iframe）
   return `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -182,19 +169,48 @@ function buildEmailPage(htmlBody, meta) {
 </html>`;
 }
 
-// 构建 iframe 内部 HTML（邮件内容在独立域中，天然样式隔离）
+// 参考 cloud-mail ShadowHtml：清理危险内容 → 提取 body 内容 → 重置样式 → 包裹在独立容器中
 function buildIframeContent(emailContent) {
-  // 先清理危险内容（script、on* 属性等），防止 XSS
+  // 1. 清理 XSS 危险内容
   const cleaned = sanitizeHtml(emailContent);
 
-  // 提取 body 标签上的 style 属性（注入到容器上）
-  const bodyStyleMatch = cleaned.match(/<body[^>]*style="([^"]*)"[^>]*>/i);
-  const bodyStyle = bodyStyleMatch ? bodyStyleMatch[1] : '';
+  // 2. 提取 body 内容；没有 body 标签时移除 head 后保留其余
+  let bodyMatch = cleaned.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  let innerContent;
+  let bodyStyle = '';
 
-  // 移除 body 标签，保留内部内容
-  const innerContent = cleaned.replace(/<\/?body[^>]*>/gi, '');
+  if (bodyMatch) {
+    innerContent = bodyMatch[1];
+    const bodyTagMatch = cleaned.match(/<body[^>]*style="([^"]*)"[^>]*>/i);
+    bodyStyle = bodyTagMatch ? bodyTagMatch[1] : '';
+  } else {
+    innerContent = cleaned
+      .replace(/<head[\s\S]*?<\/head>/i, '')
+      .replace(/<\/html>/i, '')
+      .replace(/<html[^>]*>/i, '');
+  }
 
+  // 3. 判断是否为纯文本（没有 HTML 标签则当纯文本处理）
+  const isPlainText = !/<(img|a|table|div|p|br|span|b|i|strong|em|h[1-6]|ul|ol|li|blockquote)\b/i.test(innerContent);
 
+  if (isPlainText) {
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; padding: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-size: 14px; line-height: 1.5; }
+    pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
+  </style>
+</head>
+<body>
+  <pre>${innerContent}</pre>
+</body>
+</html>`;
+  }
+
+  // 4. HTML 邮件：重置样式 + 包裹在 .email-body 容器中
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -209,8 +225,7 @@ function buildIframeContent(emailContent) {
     table { border-collapse: collapse; max-width: 100%; }
     td, th { word-break: break-word; }
     .email-body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-                   'Helvetica Neue', Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       font-size: 14px;
       line-height: 1.5;
       color: #13181D;
@@ -221,10 +236,7 @@ function buildIframeContent(emailContent) {
     }
     .email-body > * { max-width: 100%; }
     .email-body table img { max-width: none; }
-    .email-body td {
-      border: 1px solid #e0e0e0;
-      padding: 4px 8px;
-    }
+    .email-body td { border: 1px solid #e0e0e0; padding: 4px 8px; }
   </style>
 </head>
 <body>
@@ -233,19 +245,6 @@ function buildIframeContent(emailContent) {
   </div>
 </body>
 </html>`;
-}
-
-// 从邮件 HTML 中提取 <body> 内部内容，参考 cloud-mail ShadowHtml 的做法
-// 如果没有 <body> 标签，则移除 <head> 后保留其余内容
-function extractEmailBody(html) {
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  if (bodyMatch) {
-    return bodyMatch[1];
-  }
-  // 没有 body 标签时：移除 head，保留其余
-  let content = html.replace(/<head[\s\S]*?<\/head>/i, '');
-  content = content.replace(/<\/html>/i, '').replace(/<html[^>]*>/i, '');
-  return content;
 }
 
 // 清理危险 HTML（防止 XSS）
@@ -332,7 +331,7 @@ function escapeHtml(text) {
             .replace(/\{/g, '&#123;');
 }
 
-// iframe srcdoc 属性的转义：只需转义 & < > " 即可（不需要转义单引号）
+// iframe srcdoc 属性的转义：只需转义 & < > " 即可
 function escapeAttr(value) {
   return value.replace(/&/g, '&amp;')
               .replace(/</g, '&lt;')
