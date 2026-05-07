@@ -17,7 +17,7 @@ export default {
       });
     }
 
-    // 处理”查看完整网页版邮件”的请求
+    // 处理"查看完整网页版邮件"的请求
     if (url.pathname.startsWith('/mail/')) {
       if (!env.DB) {
         return new Response("<h2>网页预览功能未启用</h2><p>请在 Worker 设置中绑定 KV 数据库以启用此功能。</p>", {
@@ -42,7 +42,7 @@ export default {
 
   // ================= 2. 邮件接收与推送处理 =================
   async email(message, env, ctx) {
-    const BOT_TOKEN = env.TELEGRAM_TOKEN;
+    const BOT_TOKEN = env.TOKEN;
     const CHAT_ID = env.TELEGRAM_ID;
     const DOMAIN = env.DOMAIN;
 
@@ -211,15 +211,15 @@ function decodePart(part) {
        } catch(e) { return body; }
    } else if (headers.includes("content-transfer-encoding: quoted-printable")) {
        try {
-           // 软换行：= 后面跟 
- 实际是换行符，需要保留或替换
-           // 正确的 quoted-printable 解码：先将 =XX 转为字节，再用 UTF-8 解码
+           // 正确的 quoted-printable 解码：
+           // 1. 软换行（=/r/n 或 =/n）删除
+           // 2. =XX 转为 Latin-1 字节
+           // 3. Latin-1 字节数组用 UTF-8 解码
            let qpBody = body
              .replace(/=\r?\n/g, '')  // 软换行（删除）
              .replace(/=([0-9A-Fa-f]{2})/g, (match, hex) => {
                return String.fromCharCode(parseInt(hex, 16));
              });
-           // 转换后是 Latin-1/ISO-8859-1 字节串，需要转成 Uint8Array 再用 UTF-8 解码
            let bytes = new Uint8Array(qpBody.length);
            for (let i = 0; i < qpBody.length; i++) bytes[i] = qpBody.charCodeAt(i);
            return new TextDecoder('utf-8').decode(bytes);
@@ -229,25 +229,31 @@ function decodePart(part) {
 }
 
 // ================= 构建邮件 HTML 预览页面 =================
+// 使用 iframe srcdoc 方案实现样式隔离，参考 cloud-mail 的 ShadowHtml 组件思路
+// 但在 Cloudflare Worker 环境下使用 srcdoc 而非 Shadow DOM
 function buildEmailPage(htmlBody, meta) {
   const { subject, from } = meta;
   const escapedSubject = escapeHtml(subject);
   const escapedFrom = escapeHtml(from);
 
-  // 提取邮件正文：有些邮件有完整 <html><body>，有些只有片段
+  // 提取邮件正文
   let emailContent = htmlBody;
-
-  // 如果包含 <body> 标签，只取 body 内部内容
   const bodyMatch = htmlBody.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   if (bodyMatch) {
     emailContent = bodyMatch[1];
   } else {
-    // 否则移除 <head> 部分（避免其样式与页面样式冲突）
     emailContent = htmlBody.replace(/<head[\s\S]*?<\/head>/i, '');
-    // 移除 <html> 标签，保留内部内容
     emailContent = emailContent.replace(/<\/html>/i, '').replace(/<html[^>]*>/i, '');
   }
 
+  // 清理危险内容（script 标签、on* 属性、javascript: 协议等）
+  emailContent = sanitizeHtml(emailContent);
+
+  // iframe 内使用的邮件内容样式（完全独立，不会影响外部）
+  const iframeHtml = buildIframeContent(emailContent);
+  const iframeSrcdoc = escapeHtml(iframeHtml);
+
+  // 外部容器：固定宽度容器 + 底部 header
   return `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -281,36 +287,16 @@ function buildEmailPage(htmlBody, meta) {
       color: #666;
       line-height: 1.6;
     }
-    .email-meta strong {
-      color: #333;
+    .email-meta strong { color: #333; }
+    .email-iframe-wrap {
+      width: 100%;
+      min-height: 300px;
     }
-    .email-body {
-      padding: 0;
-      word-break: break-word;
-      overflow-wrap: break-word;
+    .email-iframe-wrap iframe {
+      width: 100%;
+      border: none;
+      display: block;
     }
-    /* 重置邮件内部可能冲突的标签样式 */
-    .email-body * {
-      max-width: 100% !important;
-      box-sizing: border-box;
-    }
-    .email-body img {
-      max-width: 100% !important;
-      height: auto;
-    }
-    .email-body a {
-      color: #1a73e8;
-    }
-    .email-body table {
-      max-width: 100% !important;
-      border-collapse: collapse;
-    }
-    .email-body td, .email-body th {
-      word-break: break-word;
-    }
-    /* Gmail 风格内联样式重置 */
-    .email-body p { margin: 0 0 1em 0; }
-    .email-body div[style*="font-size"] { font-size: 14px !important; }
   </style>
 </head>
 <body>
@@ -321,12 +307,111 @@ function buildEmailPage(htmlBody, meta) {
         <strong>发件人：</strong>${escapedFrom}
       </div>
     </div>
-    <div class="email-body">
-      ${emailContent}
+    <div class="email-iframe-wrap">
+      <iframe id="email-frame" sandbox="allow-same-origin allow-popups" srcdoc="${iframeSrcdoc}" loading="lazy"></iframe>
     </div>
   </div>
 </body>
 </html>`;
+}
+
+// 构建 iframe 内部 HTML（邮件渲染在独立域中，天然样式隔离）
+function buildIframeContent(emailContent) {
+  // 提取 body 标签上的 style 属性，合并到 .email-body 上
+  const bodyStyleMatch = emailContent.match(/<body[^>]*style="([^"]*)"[^>]*>/i);
+  const bodyStyle = bodyStyleMatch ? bodyStyleMatch[1] : '';
+
+  // 移除 body 标签（保留内容）
+  let cleanContent = emailContent.replace(/<\/?body[^>]*>/gi, '');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    /* === 全局重置：隔离邮件样式 === */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 0.5em 0;
+    }
+    p {
+      margin: 0 0 1em 0;
+      line-height: 1.5;
+    }
+    a {
+      color: #0E70DF;
+      text-decoration: none;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+    table {
+      border-collapse: collapse;
+      max-width: 100%;
+    }
+    td, th {
+      word-break: break-word;
+    }
+    /* === 邮件容器 === */
+    .email-body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                   'Helvetica Neue', Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #13181D;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      padding: 0;
+      ${bodyStyle}
+    }
+    .email-body > * {
+      max-width: 100%;
+    }
+    .email-body table img {
+      max-width: none;
+    }
+    .email-body table {
+      border-collapse: collapse;
+    }
+    .email-body td {
+      border: 1px solid #e0e0e0;
+      padding: 4px 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-body">
+    ${cleanContent}
+  </div>
+</body>
+</html>`;
+}
+
+// 清理危险 HTML：移除 script 标签和事件处理器属性
+function sanitizeHtml(html) {
+  return html
+    // 移除所有 <script> 标签及其内容
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    // 移除所有 <style> 标签（邮件内联样式会在 iframe 内保留）
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    // 移除 on* 事件属性
+    .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
+    // 移除 javascript: 协议（但保留普通 href）
+    .replace(/\s+href\s*=\s*["']\s*javascript:[^"']*["']/gi, '')
+    // 移除 expression(| behaviors 等 IE 专有属性
+    .replace(/\s+(expression|behavior)\s*:\s*[^;]+;?/gi, '')
+    // 移除 style 中的 expression( 等 IE 表达式
+    .replace(/expression\s*\([^)]*\)/gi, '')
+    // 移除 style 中的 url("javascript:...") 等
+    .replace(/url\s*\(\s*["']?\s*javascript:[^)]*["']?\s*\)/gi, 'url()');
 }
 
 function buildTextPage(textBody, meta) {
