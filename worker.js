@@ -211,8 +211,18 @@ function decodePart(part) {
        } catch(e) { return body; }
    } else if (headers.includes("content-transfer-encoding: quoted-printable")) {
        try {
-           let qp = body.replace(/=\r?\n/g, '').replace(/=([0-9A-F]{2})/gi, '%$1');
-           return decodeURIComponent(qp);
+           // 软换行：= 后面跟 
+ 实际是换行符，需要保留或替换
+           // 正确的 quoted-printable 解码：先将 =XX 转为字节，再用 UTF-8 解码
+           let qpBody = body
+             .replace(/=\r?\n/g, '')  // 软换行（删除）
+             .replace(/=([0-9A-Fa-f]{2})/g, (match, hex) => {
+               return String.fromCharCode(parseInt(hex, 16));
+             });
+           // 转换后是 Latin-1/ISO-8859-1 字节串，需要转成 Uint8Array 再用 UTF-8 解码
+           let bytes = new Uint8Array(qpBody.length);
+           for (let i = 0; i < qpBody.length; i++) bytes[i] = qpBody.charCodeAt(i);
+           return new TextDecoder('utf-8').decode(bytes);
        } catch(e) { return body; }
    }
    return body;
@@ -223,6 +233,20 @@ function buildEmailPage(htmlBody, meta) {
   const { subject, from } = meta;
   const escapedSubject = escapeHtml(subject);
   const escapedFrom = escapeHtml(from);
+
+  // 提取邮件正文：有些邮件有完整 <html><body>，有些只有片段
+  let emailContent = htmlBody;
+
+  // 如果包含 <body> 标签，只取 body 内部内容
+  const bodyMatch = htmlBody.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) {
+    emailContent = bodyMatch[1];
+  } else {
+    // 否则移除 <head> 部分（避免其样式与页面样式冲突）
+    emailContent = htmlBody.replace(/<head[\s\S]*?<\/head>/i, '');
+    // 移除 <html> 标签，保留内部内容
+    emailContent = emailContent.replace(/<\/html>/i, '').replace(/<html[^>]*>/i, '');
+  }
 
   return `<!DOCTYPE html>
 <html lang="zh">
@@ -265,12 +289,24 @@ function buildEmailPage(htmlBody, meta) {
       word-break: break-word;
       overflow-wrap: break-word;
     }
+    /* 重置邮件内部可能冲突的标签样式 */
+    .email-body * {
+      max-width: 100% !important;
+      box-sizing: border-box;
+    }
     .email-body img {
-      max-width: 100%;
+      max-width: 100% !important;
       height: auto;
     }
     .email-body a {
       color: #1a73e8;
+    }
+    .email-body table {
+      max-width: 100% !important;
+      border-collapse: collapse;
+    }
+    .email-body td, .email-body th {
+      word-break: break-word;
     }
     /* Gmail 风格内联样式重置 */
     .email-body p { margin: 0 0 1em 0; }
@@ -286,7 +322,7 @@ function buildEmailPage(htmlBody, meta) {
       </div>
     </div>
     <div class="email-body">
-      ${htmlBody}
+      ${emailContent}
     </div>
   </div>
 </body>
