@@ -251,9 +251,9 @@ function buildEmailPage(htmlBody, meta) {
 
   // iframe 内使用的邮件内容样式（完全独立，不会影响外部）
   const iframeHtml = buildIframeContent(emailContent);
-  const iframeSrcdoc = escapeHtml(iframeHtml);
 
   // 外部容器：固定宽度容器 + 底部 header
+  // 注意：iframe srcdoc 不需要 HTML 转义，直接塞原始 HTML 即可
   return `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -308,7 +308,7 @@ function buildEmailPage(htmlBody, meta) {
       </div>
     </div>
     <div class="email-iframe-wrap">
-      <iframe id="email-frame" sandbox="allow-same-origin allow-popups" srcdoc="${iframeSrcdoc}" loading="lazy"></iframe>
+      <iframe id="email-frame" sandbox="allow-same-origin allow-popups" srcdoc="${iframeHtml}" loading="lazy"></iframe>
     </div>
   </div>
 </body>
