@@ -2,15 +2,21 @@
  * Cloudflare Worker - Mail2Telegram Lite
  * 一个极简、优雅、纯 Serverless 的 Gmail 转发至 Telegram 解决方案。
  * 支持内联网页预览，无多余数据库依赖。
- * 测试自动部署 - 2026-05-07
+ *
+ * 参考了以下项目的设计：
+ * - tbxark/mail2telegram: 直接返回原始邮件 HTML/text 的预览方案
+ * - cloud-mail: ShadowHtml 组件使用 iframe srcdoc 做样式隔离的思路
  */
+
+// ================= 依赖：使用 postal-mime 解析邮件 =================
+// 已在 wrangler.toml 中配置 externals = ["postal-mime"]
+import PostalMime from 'postal-mime';
 
 export default {
   // ================= 1. HTTP 路由处理 (用于网页查看完整邮件) =================
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 兼容原版的初始化路径，防止报错
     if (url.pathname === '/init') {
       return new Response(JSON.stringify({ ok: true, result: true, msg: "Environment is ready. Send a test email!" }), {
         headers: { 'Content-Type': 'application/json; charset=utf-8' }
@@ -26,12 +32,11 @@ export default {
         });
       }
       const id = url.pathname.replace('/mail/', '');
-      const html = await env.DB.get(id); 
-      
+      const html = await env.DB.get(id);
       if (!html) {
-        return new Response("<h2>Email expired or not found.</h2><p>For storage optimization, emails are only kept for 7 days.</p>", { 
-          status: 404, 
-          headers: { 'Content-Type': 'text/html; charset=utf-8' } 
+        return new Response("<h2>Email expired or not found.</h2><p>For storage optimization, emails are only kept for 7 days.</p>", {
+          status: 404,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' }
         });
       }
       return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
@@ -51,22 +56,23 @@ export default {
       return;
     }
 
-    // 获取真实的原始发件人和主题
     const realFrom = message.headers.get("from") || message.from;
     const subject = message.headers.get("subject") || "No Subject";
 
+    // 使用 postal-mime 解析邮件（参考 tbxark/mail2telegram 的写法）
     const rawEmail = await new Response(message.raw).text();
-    const { textBody, htmlBody } = parseEmail(rawEmail);
+    const email = await PostalMime.parse(rawEmail);
+
+    const textBody = email.text || "";
+    const htmlBody = email.html || "";
 
     // KV 可选：绑定了则支持查看完整邮件功能
     const mailId = env.DB ? crypto.randomUUID() : null;
     if (env.DB) {
       let displayHtml;
       if (htmlBody) {
-        // 保留原邮件 HTML，包裹一层响应式容器
         displayHtml = buildEmailPage(htmlBody, { subject, from: realFrom });
       } else {
-        // 纯文本邮件，生成简洁的阅读页面
         displayHtml = buildTextPage(textBody, { subject, from: realFrom });
       }
       await env.DB.put(mailId, displayHtml, { expirationTtl: 604800 });
@@ -78,19 +84,16 @@ export default {
       preview = preview.substring(0, 2500) + "\n\n... [Content truncated]";
     }
 
-    // 拼装 TG 消息格式 (极简排版)
     const text = `📧 Gmail邮件通知\n\n主题:\n${subject}\n\n正文:\n${preview}\n\n---\n发件人: ${realFrom}`;
 
-    // 构建内联按钮（KV 未绑定时隐藏"查看完整邮件"按钮）
     const replyMarkup = mailId ? {
       inline_keyboard: [[
         { text: "🌐 查看完整邮件内容", url: `https://${DOMAIN}/mail/${mailId}` }
       ]]
     } : undefined;
 
-    // 调用 Telegram API 发送消息并附带内联按钮
-    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-    await fetch(url, {
+    const sendUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    await fetch(sendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -102,158 +105,22 @@ export default {
   }
 };
 
-// ================= 底层解析逻辑 (分离文本与HTML) =================
-function parseEmail(raw) {
-  let textBody = "";
-  let htmlBody = "";
-
-  try {
-    // 获取 Content-Type 判断邮件类型
-    const contentTypeMatch = raw.match(/content-type:\s*([^\r\n]+)/i);
-    const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : '';
-
-    // 检测是否为 multipart 邮件
-    const isMultipart = raw.match(/boundary=["']?([^"'\r\n]+)["']?/i);
-
-    // 单段式邮件（不是 multipart）
-    if (!isMultipart) {
-      if (contentType.includes('text/html')) {
-        htmlBody = decodePart(raw);
-        textBody = stripHtml(htmlBody);
-      } else if (contentType.includes('text/plain')) {
-        textBody = decodePart(raw);
-      }
-      // 其他情况（attachments 等），尝试在 raw 中找 HTML/plain 部分
-      if (!htmlBody && !textBody) {
-        if (contentType.includes('text/html') || raw.toLowerCase().includes('content-type: text/html')) {
-          htmlBody = decodePart(raw);
-          textBody = stripHtml(htmlBody);
-        } else if (contentType.includes('text/plain') || raw.toLowerCase().includes('content-type: text/plain')) {
-          textBody = decodePart(raw);
-        }
-      }
-      return {
-        textBody: textBody.trim() || "No preview available.",
-        htmlBody: htmlBody
-      };
-    }
-
-    // 多段式邮件解析：先用 boundary 分割
-    let boundary = isMultipart[1];
-    // 转义 boundary 中的特殊字符用于正则
-    let escapedBoundary = boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    let parts = raw.split(new RegExp(`--${escapedBoundary}`));
-
-    for (let part of parts) {
-      if (!part || part.trim() === '') continue;
-
-      const partLower = part.toLowerCase();
-      const partTypeMatch = part.match(/content-type:\s*([^\r\n]+)/i);
-      const partType = partTypeMatch ? partTypeMatch[1].toLowerCase() : '';
-
-      // 跳过附件
-      if (partType.includes('multipart') || partType.includes('image') || partType.includes('application')) {
-        continue;
-      }
-
-      if (partType.includes('text/plain') && !textBody) {
-        textBody = decodePart(part);
-      } else if (partType.includes('text/html') && !htmlBody) {
-        htmlBody = decodePart(part);
-      }
-    }
-
-    // 降级处理：如果没有纯文本版本，从 HTML 剥离标签作为预览
-    if (!textBody && htmlBody) {
-      textBody = stripHtml(htmlBody);
-    }
-    // 降级处理：如果没有 HTML 但有纯文本
-    if (!htmlBody && textBody) {
-      // 不再自动生成 HTML，保持 htmlBody 为空，让外层处理
-    }
-  } catch (e) {
-    console.error("Parse Error:", e);
-  }
-
-  return {
-    textBody: textBody.trim() || "No preview available.",
-    htmlBody: htmlBody
-  };
-}
-
-function stripHtml(html) {
-  return html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-            .replace(/<[^>]+>/g, '\n')
-            .replace(/\n\s*\n/g, '\n')
-            .trim();
-}
-
-function escapeHtml(text) {
-  return text.replace(/&/g, '&amp;')
-             .replace(/</g, '&lt;')
-             .replace(/>/g, '&gt;')
-             .replace(/"/g, '&quot;')
-             .replace(/'/g, '&#039;');
-}
-
-function decodePart(part) {
-   let splitMatch = part.match(/\r?\n\r?\n/);
-   if (!splitMatch) return "";
-   let headers = part.substring(0, splitMatch.index).toLowerCase();
-   let body = part.substring(splitMatch.index + splitMatch[0].length);
-   
-   if (headers.includes("content-transfer-encoding: base64")) {
-       try {
-           let binary = atob(body.replace(/\s+/g, ''));
-           let bytes = new Uint8Array(binary.length);
-           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-           return new TextDecoder('utf-8').decode(bytes);
-       } catch(e) { return body; }
-   } else if (headers.includes("content-transfer-encoding: quoted-printable")) {
-       try {
-           // 正确的 quoted-printable 解码：
-           // 1. 软换行（=/r/n 或 =/n）删除
-           // 2. =XX 转为 Latin-1 字节
-           // 3. Latin-1 字节数组用 UTF-8 解码
-           let qpBody = body
-             .replace(/=\r?\n/g, '')  // 软换行（删除）
-             .replace(/=([0-9A-Fa-f]{2})/g, (match, hex) => {
-               return String.fromCharCode(parseInt(hex, 16));
-             });
-           let bytes = new Uint8Array(qpBody.length);
-           for (let i = 0; i < qpBody.length; i++) bytes[i] = qpBody.charCodeAt(i);
-           return new TextDecoder('utf-8').decode(bytes);
-       } catch(e) { return body; }
-   }
-   return body;
-}
-
 // ================= 构建邮件 HTML 预览页面 =================
-// 使用 iframe srcdoc 方案实现样式隔离，参考 cloud-mail 的 ShadowHtml 组件思路
-// 但在 Cloudflare Worker 环境下使用 srcdoc 而非 Shadow DOM
+// 参考 cloud-mail 的 ShadowHtml 组件：使用 iframe srcdoc 做样式隔离
+// iframe 内部是完全独立的 HTML 文档，邮件 CSS 不会影响外部页面
+
 function buildEmailPage(htmlBody, meta) {
   const { subject, from } = meta;
   const escapedSubject = escapeHtml(subject);
   const escapedFrom = escapeHtml(from);
 
-  // 提取邮件正文
-  let emailContent = htmlBody;
-  const bodyMatch = htmlBody.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  if (bodyMatch) {
-    emailContent = bodyMatch[1];
-  } else {
-    emailContent = htmlBody.replace(/<head[\s\S]*?<\/head>/i, '');
-    emailContent = emailContent.replace(/<\/html>/i, '').replace(/<html[^>]*>/i, '');
-  }
+  // 提取邮件正文内容
+  const emailContent = extractEmailBody(htmlBody);
 
-  // 清理危险内容（script 标签、on* 属性、javascript: 协议等）
-  emailContent = sanitizeHtml(emailContent);
-
-  // iframe 内使用的邮件内容样式（完全独立，不会影响外部）
+  // 构建 iframe 内部 HTML（参考 cloud-mail ShadowHtml 的处理方式）
   const iframeHtml = buildIframeContent(emailContent);
 
-  // 外部容器：固定宽度容器 + 底部 header
-  // 注意：iframe srcdoc 不需要 HTML 转义，直接塞原始 HTML 即可
+  // 外部容器（header + iframe）
   return `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -308,21 +175,23 @@ function buildEmailPage(htmlBody, meta) {
       </div>
     </div>
     <div class="email-iframe-wrap">
-      <iframe id="email-frame" sandbox="allow-same-origin allow-popups" srcdoc="${iframeHtml}" loading="lazy"></iframe>
+      <iframe sandbox="allow-same-origin allow-popups" srcdoc="${iframeHtml}" loading="lazy"></iframe>
     </div>
   </div>
 </body>
 </html>`;
 }
 
-// 构建 iframe 内部 HTML（邮件渲染在独立域中，天然样式隔离）
+// 参考 cloud-mail ShadowHtml 组件的 iframe 内容构建方式
+// 核心思路：从邮件 HTML 中提取 <body> 内部内容，
+// 重置样式后包裹在独立样式的容器中
 function buildIframeContent(emailContent) {
-  // 提取 body 标签上的 style 属性，合并到 .email-body 上
+  // 提取 body 标签上的 style 属性（参考 cloud-mail）
   const bodyStyleMatch = emailContent.match(/<body[^>]*style="([^"]*)"[^>]*>/i);
   const bodyStyle = bodyStyleMatch ? bodyStyleMatch[1] : '';
 
-  // 移除 body 标签（保留内容）
-  let cleanContent = emailContent.replace(/<\/?body[^>]*>/gi, '');
+  // 移除 body 标签，保留内部内容
+  const cleanedHtml = emailContent.replace(/<\/?body[^>]*>/gi, '');
 
   return `<!DOCTYPE html>
 <html>
@@ -330,37 +199,15 @@ function buildIframeContent(emailContent) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    /* === 全局重置：隔离邮件样式 === */
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    h1, h2, h3, h4, h5, h6 {
-      font-size: 18px;
-      font-weight: 700;
-      margin: 0 0 0.5em 0;
-    }
-    p {
-      margin: 0 0 1em 0;
-      line-height: 1.5;
-    }
-    a {
-      color: #0E70DF;
-      text-decoration: none;
-    }
-    img {
-      max-width: 100%;
-      height: auto;
-    }
-    table {
-      border-collapse: collapse;
-      max-width: 100%;
-    }
-    td, th {
-      word-break: break-word;
-    }
-    /* === 邮件容器 === */
+    /* 全局重置：隔离邮件样式（参考 cloud-mail ShadowHtml） */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    h1, h2, h3, h4 { font-size: 18px; font-weight: 700; margin: 0 0 0.5em 0; }
+    p { margin: 0 0 1em 0; line-height: 1.5; }
+    a { color: #0E70DF; text-decoration: none; }
+    img { max-width: 100%; height: auto; }
+    table { border-collapse: collapse; max-width: 100%; }
+    td, th { word-break: break-word; }
+    /* 邮件容器 */
     .email-body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
                    'Helvetica Neue', Arial, sans-serif;
@@ -372,15 +219,8 @@ function buildIframeContent(emailContent) {
       padding: 0;
       ${bodyStyle}
     }
-    .email-body > * {
-      max-width: 100%;
-    }
-    .email-body table img {
-      max-width: none;
-    }
-    .email-body table {
-      border-collapse: collapse;
-    }
+    .email-body > * { max-width: 100%; }
+    .email-body table img { max-width: none; }
     .email-body td {
       border: 1px solid #e0e0e0;
       padding: 4px 8px;
@@ -389,28 +229,33 @@ function buildIframeContent(emailContent) {
 </head>
 <body>
   <div class="email-body">
-    ${cleanContent}
+    ${cleanedHtml}
   </div>
 </body>
 </html>`;
 }
 
-// 清理危险 HTML：移除 script 标签和事件处理器属性
+// 从邮件 HTML 中提取 <body> 内部内容，参考 cloud-mail ShadowHtml 的做法
+// 如果没有 <body> 标签，则移除 <head> 后保留其余内容
+function extractEmailBody(html) {
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) {
+    return bodyMatch[1];
+  }
+  // 没有 body 标签时：移除 head，保留其余
+  let content = html.replace(/<head[\s\S]*?<\/head>/i, '');
+  content = content.replace(/<\/html>/i, '').replace(/<html[^>]*>/i, '');
+  return content;
+}
+
+// 清理危险 HTML（防止 XSS，参考现代邮件处理规范）
 function sanitizeHtml(html) {
   return html
-    // 移除所有 <script> 标签及其内容
     .replace(/<script[\s\S]*?<\/script>/gi, '')
-    // 移除所有 <style> 标签（邮件内联样式会在 iframe 内保留）
     .replace(/<style[\s\S]*?<\/style>/gi, '')
-    // 移除 on* 事件属性
     .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
-    // 移除 javascript: 协议（但保留普通 href）
     .replace(/\s+href\s*=\s*["']\s*javascript:[^"']*["']/gi, '')
-    // 移除 expression(| behaviors 等 IE 专有属性
-    .replace(/\s+(expression|behavior)\s*:\s*[^;]+;?/gi, '')
-    // 移除 style 中的 expression( 等 IE 表达式
     .replace(/expression\s*\([^)]*\)/gi, '')
-    // 移除 style 中的 url("javascript:...") 等
     .replace(/url\s*\(\s*["']?\s*javascript:[^)]*["']?\s*\)/gi, 'url()');
 }
 
@@ -476,4 +321,12 @@ function buildTextPage(textBody, meta) {
   </div>
 </body>
 </html>`;
+}
+
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;')
+             .replace(/</g, '&lt;')
+             .replace(/>/g, '&gt;')
+             .replace(/"/g, '&quot;')
+             .replace(/'/g, '&#039;');
 }

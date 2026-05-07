@@ -1,0 +1,17 @@
+{
+  "name": "mail2telegram-lite",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A minimalist Gmail to Telegram forwarder with web preview",
+  "main": "worker.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "postal-mime": "^2.5.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
