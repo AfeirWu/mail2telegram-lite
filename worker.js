@@ -59,9 +59,9 @@ export default {
     const realFrom = message.headers.get("from") || message.from;
     const subject = message.headers.get("subject") || "No Subject";
 
-    // 使用 postal-mime 解析邮件（参考 tbxark/mail2telegram 的写法）
-    const rawEmail = await new Response(message.raw).text();
-    const email = await PostalMime.parse(rawEmail);
+    // 使用 postal-mime 解析邮件（参考 tbxark/mail2telegram）
+    // 注意：parse() 接收 ReadableStream，不是字符串
+    const email = await PostalMime.parse(message.raw);
 
     const textBody = email.text || "";
     const htmlBody = email.html || "";
