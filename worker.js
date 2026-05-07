@@ -116,12 +116,12 @@ function buildEmailPage(htmlBody, meta) {
   <title>${escapedSubject}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background-color: #f6f6f6; }
+    html, body { height: 100%; overflow: hidden; background-color: #f6f6f6; }
     .email-container {
       max-width: 700px;
       margin: 0 auto;
       background-color: #ffffff;
-      min-height: 100vh;
+      height: 100%;
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
       display: flex;
       flex-direction: column;
@@ -147,7 +147,7 @@ function buildEmailPage(htmlBody, meta) {
     .email-iframe-wrap {
       flex: 1;
       width: 100%;
-      overflow: hidden;
+      overflow: auto;
     }
     .email-iframe-wrap iframe {
       width: 100%;
