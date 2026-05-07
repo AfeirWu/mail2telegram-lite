@@ -123,6 +123,8 @@ function buildEmailPage(htmlBody, meta) {
       background-color: #ffffff;
       min-height: 100vh;
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
     }
     .email-header {
       background-color: #f6f6f6;
@@ -143,11 +145,13 @@ function buildEmailPage(htmlBody, meta) {
     }
     .email-meta strong { color: #333; }
     .email-iframe-wrap {
+      flex: 1;
       width: 100%;
-      min-height: 300px;
+      overflow: hidden;
     }
     .email-iframe-wrap iframe {
       width: 100%;
+      height: 100%;
       border: none;
       display: block;
     }
