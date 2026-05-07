@@ -47,7 +47,7 @@ export default {
 
   // ================= 2. 邮件接收与推送处理 =================
   async email(message, env, ctx) {
-    const BOT_TOKEN = env.TOKEN;
+    const BOT_TOKEN = env.TELEGRAM_TOKEN;
     const CHAT_ID = env.TELEGRAM_ID;
     const DOMAIN = env.DOMAIN;
 
