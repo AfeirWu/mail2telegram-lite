@@ -222,12 +222,6 @@ function buildIframeContent(emailContent) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    h1, h2, h3, h4 { font-size: 18px; font-weight: 700; margin: 0 0 0.5em 0; }
-    p { margin: 0 0 1em 0; line-height: 1.5; }
-    a { color: #0E70DF; text-decoration: none; }
-    img { max-width: 100%; height: auto; }
-    table { border-collapse: collapse; max-width: 100%; }
-    td, th { word-break: break-word; }
     .email-body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       font-size: 14px;
@@ -238,9 +232,6 @@ function buildIframeContent(emailContent) {
       padding: 0;
       ${bodyStyle}
     }
-    .email-body > * { max-width: 100%; }
-    .email-body table img { max-width: none; }
-    .email-body td { border: 1px solid #e0e0e0; padding: 4px 8px; }
   </style>
 </head>
 <body>
