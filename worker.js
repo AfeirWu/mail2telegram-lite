@@ -175,23 +175,25 @@ function buildEmailPage(htmlBody, meta) {
       </div>
     </div>
     <div class="email-iframe-wrap">
-      <iframe sandbox="allow-same-origin allow-popups" srcdoc="${iframeHtml}" loading="lazy"></iframe>
+      <iframe sandbox="allow-same-origin allow-popups" srcdoc="${escapeAttr(iframeHtml)}" loading="lazy"></iframe>
     </div>
   </div>
 </body>
 </html>`;
 }
 
-// 参考 cloud-mail ShadowHtml 组件的 iframe 内容构建方式
-// 核心思路：从邮件 HTML 中提取 <body> 内部内容，
-// 重置样式后包裹在独立样式的容器中
+// 构建 iframe 内部 HTML（邮件内容在独立域中，天然样式隔离）
 function buildIframeContent(emailContent) {
-  // 提取 body 标签上的 style 属性（参考 cloud-mail）
-  const bodyStyleMatch = emailContent.match(/<body[^>]*style="([^"]*)"[^>]*>/i);
+  // 先清理危险内容（script、on* 属性等），防止 XSS
+  const cleaned = sanitizeHtml(emailContent);
+
+  // 提取 body 标签上的 style 属性（注入到容器上）
+  const bodyStyleMatch = cleaned.match(/<body[^>]*style="([^"]*)"[^>]*>/i);
   const bodyStyle = bodyStyleMatch ? bodyStyleMatch[1] : '';
 
   // 移除 body 标签，保留内部内容
-  const cleanedHtml = emailContent.replace(/<\/?body[^>]*>/gi, '');
+  const innerContent = cleaned.replace(/<\/?body[^>]*>/gi, '');
+
 
   return `<!DOCTYPE html>
 <html>
@@ -199,7 +201,6 @@ function buildIframeContent(emailContent) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    /* 全局重置：隔离邮件样式（参考 cloud-mail ShadowHtml） */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     h1, h2, h3, h4 { font-size: 18px; font-weight: 700; margin: 0 0 0.5em 0; }
     p { margin: 0 0 1em 0; line-height: 1.5; }
@@ -207,7 +208,6 @@ function buildIframeContent(emailContent) {
     img { max-width: 100%; height: auto; }
     table { border-collapse: collapse; max-width: 100%; }
     td, th { word-break: break-word; }
-    /* 邮件容器 */
     .email-body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
                    'Helvetica Neue', Arial, sans-serif;
@@ -229,7 +229,7 @@ function buildIframeContent(emailContent) {
 </head>
 <body>
   <div class="email-body">
-    ${cleanedHtml}
+    ${innerContent}
   </div>
 </body>
 </html>`;
@@ -248,15 +248,15 @@ function extractEmailBody(html) {
   return content;
 }
 
-// 清理危险 HTML（防止 XSS，参考现代邮件处理规范）
+// 清理危险 HTML（防止 XSS）
 function sanitizeHtml(html) {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
-    .replace(/\s+href\s*=\s*["']\s*javascript:[^"']*["']/gi, '')
+    .replace(/href\s*=\s*["']\s*javascript:[^"']*["']/gi, 'href=""')
     .replace(/expression\s*\([^)]*\)/gi, '')
-    .replace(/url\s*\(\s*["']?\s*javascript:[^)]*["']?\s*\)/gi, 'url()');
+    .replace(/url\s*\(\s*["']?\s*javascript:[^)]*["']?\s*\)/gi, 'url("")');
 }
 
 function buildTextPage(textBody, meta) {
@@ -325,8 +325,17 @@ function buildTextPage(textBody, meta) {
 
 function escapeHtml(text) {
   return text.replace(/&/g, '&amp;')
-             .replace(/</g, '&lt;')
-             .replace(/>/g, '&gt;')
-             .replace(/"/g, '&quot;')
-             .replace(/'/g, '&#039;');
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;')
+            .replace(/\{/g, '&#123;');
+}
+
+// iframe srcdoc 属性的转义：只需转义 & < > " 即可（不需要转义单引号）
+function escapeAttr(value) {
+  return value.replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;');
 }
