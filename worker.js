@@ -55,7 +55,7 @@ export default {
     const email = await PostalMime.parse(message.raw);
     const textBody = email.text || "";
     const htmlBody = email.html || "";
-    const subject = email.subject || message.headers.get("subject") || "无主题";
+    const subject = email.subject || "无主题";
     const realFrom = message.headers.get("from") || message.from || "未知发件人";
 
     // KV 可选：绑定了则支持查看完整邮件功能
@@ -117,10 +117,11 @@ function buildEmailPage(htmlBody, meta) {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; background-color: #f6f6f6; }
     .email-container {
-      width: 100%;
-      max-width: 100vw;
+      max-width: 700px;
+      margin: 0 auto;
       background-color: #ffffff;
       height: 100%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
       display: flex;
       flex-direction: column;
     }
@@ -212,7 +213,7 @@ function buildIframeContent(emailContent) {
 </html>`;
   }
 
-  // 4. HTML 邮件：包裹在 .email-body 中，同时将所有固定宽度元素改为响应式
+  // 4. HTML 邮件：重置样式 + 包裹在 .email-body 容器中
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -220,7 +221,6 @@ function buildIframeContent(emailContent) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 100%; max-width: 100vw; overflow-x: hidden; }
     .email-body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       font-size: 14px;
@@ -229,16 +229,8 @@ function buildIframeContent(emailContent) {
       word-break: break-word;
       overflow-wrap: break-word;
       padding: 0;
-      max-width: 100%;
-      width: 100%;
       ${bodyStyle}
     }
-    .email-body img { max-width: 100%; height: auto; display: block; }
-    .email-body table { max-width: 100% !important; width: auto !important; table-layout: auto; }
-    .email-body td, .email-body th { max-width: 100%; word-break: break-word; }
-    .email-body a { word-break: break-word; }
-    .email-body p { max-width: 100%; }
-    .email-body div, .email-body span { max-width: 100%; }
   </style>
 </head>
 <body>
