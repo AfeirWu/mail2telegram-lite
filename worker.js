@@ -117,11 +117,9 @@ function buildEmailPage(htmlBody, meta) {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; background-color: #f6f6f6; }
     .email-container {
-      max-width: 700px;
-      margin: 0 auto;
+      width: 100%;
       background-color: #ffffff;
       height: 100%;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
       display: flex;
       flex-direction: column;
     }
