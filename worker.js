@@ -117,37 +117,34 @@ function buildEmailPage(htmlBody, meta) {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; background-color: #f6f6f6; }
-    .email-container {
-      max-width: 700px;
-      margin: 0 auto;
-      background-color: #ffffff;
-      height: 100%;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-      display: flex;
-      flex-direction: column;
-    }
     .email-header {
       background-color: #f6f6f6;
       border-bottom: 1px solid #e8e8e8;
-      padding: 16px 24px;
+      padding: 12px 16px;
     }
     .email-header h1 {
-      font-size: 18px;
+      font-size: 15px;
       font-weight: 600;
       color: #1a1a1a;
-      margin-bottom: 8px;
-      line-height: 1.4;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .email-meta {
-      font-size: 13px;
+      font-size: 12px;
       color: #666;
-      line-height: 1.6;
+      line-height: 1.4;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .email-meta strong { color: #333; }
     .email-iframe-wrap {
-      flex: 1;
+      height: calc(100vh - 64px);
       width: 100%;
       overflow: auto;
+      -webkit-overflow-scrolling: touch;
     }
     .email-iframe-wrap iframe {
       width: 100%;
@@ -158,16 +155,14 @@ function buildEmailPage(htmlBody, meta) {
   </style>
 </head>
 <body>
-  <div class="email-container">
-    <div class="email-header">
-      <h1>${escapedSubject}</h1>
-      <div class="email-meta">
-        <strong>发件人：</strong>${escapedFrom}
-      </div>
+  <div class="email-header">
+    <h1>${escapedSubject}</h1>
+    <div class="email-meta">
+      <strong>发件人：</strong>${escapedFrom}
     </div>
-    <div class="email-iframe-wrap">
-      <iframe sandbox="allow-same-origin allow-popups" srcdoc="${escapeAttr(iframeHtml)}" loading="lazy"></iframe>
-    </div>
+  </div>
+  <div class="email-iframe-wrap">
+    <iframe sandbox="allow-same-origin allow-popups" srcdoc="${escapeAttr(iframeHtml)}" loading="lazy"></iframe>
   </div>
 </body>
 </html>`;
