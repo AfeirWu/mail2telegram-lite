@@ -104,9 +104,9 @@ function buildEmailPage(htmlBody, meta) {
   const escapedSubject = escapeHtml(subject);
   const escapedFrom = escapeHtml(from);
 
-  // buildIframeContent 内部处理：sanitize + 提取 body + 重置样式 + 纯文本判断
   const iframeHtml = buildIframeContent(htmlBody);
 
+  // 用 JS scale 缩放：固定宽度 600px，等比缩放适配任意屏幕
   return `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -117,26 +117,30 @@ function buildEmailPage(htmlBody, meta) {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; background-color: #f6f6f6; }
     .email-header {
+      height: 64px;
       background-color: #f6f6f6;
       border-bottom: 1px solid #e8e8e8;
-      padding: 12px 16px;
+      padding: 0 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
     }
     .email-header h1 {
       font-size: 15px;
       font-weight: 600;
       color: #1a1a1a;
       line-height: 1.3;
+      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
     }
     .email-meta {
       font-size: 12px;
       color: #666;
       line-height: 1.4;
+      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
     }
     .email-meta strong { color: #333; }
     .email-iframe-wrap {
@@ -144,10 +148,10 @@ function buildEmailPage(htmlBody, meta) {
       width: 100%;
       overflow: auto;
       -webkit-overflow-scrolling: touch;
+      display: flex;
+      justify-content: center;
     }
     .email-iframe-wrap iframe {
-      width: 100%;
-      height: 100%;
       border: none;
       display: block;
     }
@@ -161,8 +165,33 @@ function buildEmailPage(htmlBody, meta) {
     </div>
   </div>
   <div class="email-iframe-wrap">
-    <iframe sandbox="allow-same-origin allow-popups" srcdoc="${escapeAttr(iframeHtml)}" loading="lazy"></iframe>
+    <iframe id="emailFrame" sandbox="allow-same-origin allow-popups" srcdoc="${escapeAttr(iframeHtml)}" loading="lazy"></iframe>
   </div>
+  <script>
+    (function() {
+      var EMAIL_W = 600;
+      var iframe = document.getElementById('emailFrame');
+      var wrap = iframe.parentElement;
+      function scale() {
+        var ww = wrap.clientWidth;
+        if (ww >= EMAIL_W) {
+          iframe.style.width = EMAIL_W + 'px';
+          iframe.style.height = 'auto';
+          iframe.style.transform = 'none';
+        } else {
+          var s = ww / EMAIL_W;
+          iframe.style.width = EMAIL_W + 'px';
+          iframe.style.transform = 'scale(' + s + ')';
+          iframe.style.transformOrigin = 'top left';
+          iframe.style.height = (wrap.scrollHeight / s) + 'px';
+        }
+      }
+      window.addEventListener('load', scale);
+      window.addEventListener('resize', scale);
+      // 延迟执行，等待 iframe 内容加载
+      setTimeout(scale, 200);
+    })();
+  <\/script>
 </body>
 </html>`;
 }
@@ -208,7 +237,8 @@ function buildIframeContent(emailContent) {
 </html>`;
   }
 
-  // 4. HTML 邮件：包裹在 .email-body 容器中，同时让内部元素自适应屏幕宽度
+  // 4. HTML 邮件：包裹在固定宽度容器中，由外层 scale 统一缩放适配屏幕
+  // 外层 iframe srcdoc 隔离，外层 buildEmailPage 做整体缩放
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -216,6 +246,7 @@ function buildIframeContent(emailContent) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 600px; background-color: #ffffff; }
     .email-body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       font-size: 14px;
@@ -224,13 +255,8 @@ function buildIframeContent(emailContent) {
       word-break: break-word;
       overflow-wrap: break-word;
       padding: 0;
-      max-width: 100vw;
-      overflow-x: hidden;
       ${bodyStyle}
     }
-    .email-body img { max-width: 100%; height: auto; }
-    .email-body table { max-width: 100% !important; width: auto !important; table-layout: auto; }
-    .email-body td, .email-body th { word-break: break-word; }
   </style>
 </head>
 <body>
