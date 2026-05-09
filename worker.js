@@ -55,8 +55,8 @@ export default {
     const email = await PostalMime.parse(message.raw);
     const textBody = email.text || "";
     const htmlBody = email.html || "";
-    const subject = email.subject || decodeRfc2047(message.headers.get("subject")) || "无主题";
-    const realFrom = message.headers.get("from") || "未知发件人";
+    const subject = email.subject || message.headers.get("subject") || "无主题";
+    const realFrom = message.headers.get("from") || message.from || "未知发件人";
 
     // KV 可选：绑定了则支持查看完整邮件功能
     const mailId = env.DB ? crypto.randomUUID() : null;
@@ -104,9 +104,9 @@ function buildEmailPage(htmlBody, meta) {
   const escapedSubject = escapeHtml(subject);
   const escapedFrom = escapeHtml(from);
 
+  // buildIframeContent 内部处理：sanitize + 提取 body + 重置样式 + 纯文本判断
   const iframeHtml = buildIframeContent(htmlBody);
 
-  // 用 JS scale 缩放：固定宽度 600px，等比缩放适配任意屏幕
   return `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -116,82 +116,58 @@ function buildEmailPage(htmlBody, meta) {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; background-color: #f6f6f6; }
-    .email-header {
-      height: 64px;
-      background-color: #f6f6f6;
-      border-bottom: 1px solid #e8e8e8;
-      padding: 0 16px;
+    .email-container {
+      max-width: 700px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      height: 100%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
       display: flex;
       flex-direction: column;
-      justify-content: center;
+    }
+    .email-header {
+      background-color: #f6f6f6;
+      border-bottom: 1px solid #e8e8e8;
+      padding: 16px 24px;
     }
     .email-header h1 {
-      font-size: 15px;
+      font-size: 18px;
       font-weight: 600;
       color: #1a1a1a;
-      line-height: 1.3;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      margin-bottom: 8px;
+      line-height: 1.4;
     }
     .email-meta {
-      font-size: 12px;
+      font-size: 13px;
       color: #666;
-      line-height: 1.4;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      line-height: 1.6;
     }
     .email-meta strong { color: #333; }
     .email-iframe-wrap {
-      height: calc(100vh - 64px);
+      flex: 1;
       width: 100%;
       overflow: auto;
-      -webkit-overflow-scrolling: touch;
-      display: flex;
-      justify-content: center;
     }
     .email-iframe-wrap iframe {
+      width: 100%;
+      height: 100%;
       border: none;
       display: block;
     }
   </style>
 </head>
 <body>
-  <div class="email-header">
-    <h1>${escapedSubject}</h1>
-    <div class="email-meta">
-      <strong>发件人：</strong>${escapedFrom}
+  <div class="email-container">
+    <div class="email-header">
+      <h1>${escapedSubject}</h1>
+      <div class="email-meta">
+        <strong>发件人：</strong>${escapedFrom}
+      </div>
+    </div>
+    <div class="email-iframe-wrap">
+      <iframe sandbox="allow-same-origin allow-popups" srcdoc="${escapeAttr(iframeHtml)}" loading="lazy"></iframe>
     </div>
   </div>
-  <div class="email-iframe-wrap">
-    <iframe id="emailFrame" sandbox="allow-same-origin allow-popups" srcdoc="${escapeAttr(iframeHtml)}" loading="lazy"></iframe>
-  </div>
-  <script>
-    (function() {
-      var EMAIL_W = 600;
-      var iframe = document.getElementById('emailFrame');
-      var wrap = iframe.parentElement;
-      function scale() {
-        var ww = wrap.clientWidth;
-        if (ww >= EMAIL_W) {
-          iframe.style.width = EMAIL_W + 'px';
-          iframe.style.height = 'auto';
-          iframe.style.transform = 'none';
-        } else {
-          var s = ww / EMAIL_W;
-          iframe.style.width = EMAIL_W + 'px';
-          iframe.style.transform = 'scale(' + s + ')';
-          iframe.style.transformOrigin = 'top left';
-          iframe.style.height = (wrap.scrollHeight / s) + 'px';
-        }
-      }
-      window.addEventListener('load', scale);
-      window.addEventListener('resize', scale);
-      // 延迟执行，等待 iframe 内容加载
-      setTimeout(scale, 200);
-    })();
-  <\/script>
 </body>
 </html>`;
 }
@@ -237,8 +213,7 @@ function buildIframeContent(emailContent) {
 </html>`;
   }
 
-  // 4. HTML 邮件：包裹在固定宽度容器中，由外层 scale 统一缩放适配屏幕
-  // 外层 iframe srcdoc 隔离，外层 buildEmailPage 做整体缩放
+  // 4. HTML 邮件：重置样式 + 包裹在 .email-body 容器中
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -246,7 +221,6 @@ function buildIframeContent(emailContent) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 600px; background-color: #ffffff; }
     .email-body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       font-size: 14px;
@@ -349,29 +323,6 @@ function escapeHtml(text) {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;')
             .replace(/\{/g, '&#123;');
-}
-
-// 解码 RFC 2047 编码的邮件头（如 =?UTF-8?B?...?=）
-function decodeRfc2047(str) {
-  if (!str) return null;
-  // 匹配 =?charset?encoding?encoded-text?=
-  return str.replace(/=\?([^?]+)\?([BQbq])\?([^?]*)\?=/g, function(match, charset, encoding, text) {
-    try {
-      if (encoding === 'B' || encoding === 'b') {
-        // Base64 解码
-        text = atob(text);
-      } else {
-        // Quoted-printable 解码
-        text = text.replace(/=([0-9A-Fa-f]{2})/g, function(m, hex) {
-          return String.fromCharCode(parseInt(hex, 16));
-        }).replace(/=\r?\n/g, '');
-      }
-      // 转换为 UTF-8
-      return decodeURIComponent(encodeURIComponent(text));
-    } catch(e) {
-      return match;
-    }
-  });
 }
 
 // iframe srcdoc 属性的转义：只需转义 & < > " 即可
