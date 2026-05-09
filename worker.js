@@ -208,7 +208,7 @@ function buildIframeContent(emailContent) {
 </html>`;
   }
 
-  // 4. HTML 邮件：包裹在 .email-body 容器中，原始样式完整保留
+  // 4. HTML 邮件：包裹在 .email-body 容器中，同时让内部元素自适应屏幕宽度
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -224,8 +224,13 @@ function buildIframeContent(emailContent) {
       word-break: break-word;
       overflow-wrap: break-word;
       padding: 0;
+      max-width: 100vw;
+      overflow-x: hidden;
       ${bodyStyle}
     }
+    .email-body img { max-width: 100%; height: auto; }
+    .email-body table { max-width: 100% !important; width: auto !important; table-layout: auto; }
+    .email-body td, .email-body th { word-break: break-word; }
   </style>
 </head>
 <body>
