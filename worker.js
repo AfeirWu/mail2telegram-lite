@@ -55,7 +55,7 @@ export default {
     const email = await PostalMime.parse(message.raw);
     const textBody = email.text || "";
     const htmlBody = email.html || "";
-    const subject = email.subject || "无主题";
+    const subject = email.subject || decodeRfc2047(message.headers.get("subject")) || "无主题";
     const realFrom = message.headers.get("from") || "未知发件人";
 
     // KV 可选：绑定了则支持查看完整邮件功能
@@ -208,42 +208,30 @@ function buildIframeContent(emailContent) {
 </html>`;
   }
 
-  // 4. HTML 邮件：用 scale 缩放适配 iframe 宽度，保持原始样式完整
+  // 4. HTML 邮件：包裹在 .email-body 容器中，原始样式完整保留
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    html, body { margin: 0; padding: 0; width: 100vw; overflow-x: hidden; }
-    .email-scaler {
-      transform-origin: top left;
-      width: 100%;
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    .email-body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #13181D;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      padding: 0;
+      ${bodyStyle}
     }
   </style>
-  <script>
-    function scaleEmail() {
-      var iframe = document.querySelector('.email-scaler');
-      if (!iframe) return;
-      var aw = iframe.contentWindow;
-      var doc = aw.document;
-      doc.open();
-      doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html, body { margin: 0; padding: 0; overflow-x: hidden; }</style></head><body>' + document.querySelector('.email-scaler').getAttribute('data-body') + '</body></html>');
-      doc.close();
-      var w = doc.documentElement.scrollWidth;
-      var vw = window.innerWidth;
-      if (w > vw) {
-        var scale = vw / w;
-        iframe.style.transform = 'scale(' + scale + ')';
-        iframe.style.height = (doc.documentElement.scrollHeight * scale) + 'px';
-      }
-    }
-    window.addEventListener('load', scaleEmail);
-    window.addEventListener('resize', scaleEmail);
-  </script>
 </head>
 <body>
-  <div class="email-scaler" data-body="${escapeAttr(innerContent)}"></div>
+  <div class="email-body">
+    ${innerContent}
+  </div>
 </body>
 </html>`;
 }
@@ -330,6 +318,29 @@ function escapeHtml(text) {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;')
             .replace(/\{/g, '&#123;');
+}
+
+// 解码 RFC 2047 编码的邮件头（如 =?UTF-8?B?...?=）
+function decodeRfc2047(str) {
+  if (!str) return null;
+  // 匹配 =?charset?encoding?encoded-text?=
+  return str.replace(/=\?([^?]+)\?([BQbq])\?([^?]*)\?=/g, function(match, charset, encoding, text) {
+    try {
+      if (encoding === 'B' || encoding === 'b') {
+        // Base64 解码
+        text = atob(text);
+      } else {
+        // Quoted-printable 解码
+        text = text.replace(/=([0-9A-Fa-f]{2})/g, function(m, hex) {
+          return String.fromCharCode(parseInt(hex, 16));
+        }).replace(/=\r?\n/g, '');
+      }
+      // 转换为 UTF-8
+      return decodeURIComponent(encodeURIComponent(text));
+    } catch(e) {
+      return match;
+    }
+  });
 }
 
 // iframe srcdoc 属性的转义：只需转义 & < > " 即可
