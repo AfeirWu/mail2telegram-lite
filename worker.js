@@ -51,13 +51,12 @@ export default {
       return;
     }
 
-    const realFrom = message.headers.get("from") || message.from;
-    const subject = message.headers.get("subject") || "No Subject";
-
     // 使用 postal-mime 解析邮件（参考 tbxark/mail2telegram）
     const email = await PostalMime.parse(message.raw);
     const textBody = email.text || "";
     const htmlBody = email.html || "";
+    const subject = email.subject || "无主题";
+    const realFrom = message.headers.get("from") || "未知发件人";
 
     // KV 可选：绑定了则支持查看完整邮件功能
     const mailId = env.DB ? crypto.randomUUID() : null;
@@ -209,30 +208,42 @@ function buildIframeContent(emailContent) {
 </html>`;
   }
 
-  // 4. HTML 邮件：重置样式 + 包裹在 .email-body 容器中
+  // 4. HTML 邮件：用 scale 缩放适配 iframe 宽度，保持原始样式完整
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    .email-body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      font-size: 14px;
-      line-height: 1.5;
-      color: #13181D;
-      word-break: break-word;
-      overflow-wrap: break-word;
-      padding: 0;
-      ${bodyStyle}
+    html, body { margin: 0; padding: 0; width: 100vw; overflow-x: hidden; }
+    .email-scaler {
+      transform-origin: top left;
+      width: 100%;
     }
   </style>
+  <script>
+    function scaleEmail() {
+      var iframe = document.querySelector('.email-scaler');
+      if (!iframe) return;
+      var aw = iframe.contentWindow;
+      var doc = aw.document;
+      doc.open();
+      doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html, body { margin: 0; padding: 0; overflow-x: hidden; }</style></head><body>' + document.querySelector('.email-scaler').getAttribute('data-body') + '</body></html>');
+      doc.close();
+      var w = doc.documentElement.scrollWidth;
+      var vw = window.innerWidth;
+      if (w > vw) {
+        var scale = vw / w;
+        iframe.style.transform = 'scale(' + scale + ')';
+        iframe.style.height = (doc.documentElement.scrollHeight * scale) + 'px';
+      }
+    }
+    window.addEventListener('load', scaleEmail);
+    window.addEventListener('resize', scaleEmail);
+  </script>
 </head>
 <body>
-  <div class="email-body">
-    ${innerContent}
-  </div>
+  <div class="email-scaler" data-body="${escapeAttr(innerContent)}"></div>
 </body>
 </html>`;
 }
