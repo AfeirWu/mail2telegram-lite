@@ -213,25 +213,33 @@ function buildIframeContent(emailContent) {
 </html>`;
   }
 
-  // 4. HTML 邮件：保留原始样式，用 transform 缩放适配手机
+  // 4. HTML 邮件：保留原始样式，手机端动态缩放适配
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    html, body { margin: 0; padding: 0; overflow-x: hidden; }
+    html, body { margin: 0; padding: 0; }
     .email-body-wrapper {
-      min-width: 600px;
-      transform-origin: top left;
-    }
-    @media screen and (max-width: 600px) {
-      .email-body-wrapper {
-        transform: scaleX(calc(100vw / 600));
-        width: 600px;
-      }
+      display: inline-block;
+      width: auto;
     }
   </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var wrapper = document.querySelector('.email-body-wrapper');
+      if (!wrapper) return;
+      var contentWidth = wrapper.offsetWidth;
+      var screenWidth = window.innerWidth;
+      if (contentWidth > screenWidth && screenWidth > 0) {
+        var scale = screenWidth / contentWidth;
+        wrapper.style.transform = 'scale(' + scale + ')';
+        wrapper.style.transformOrigin = 'top left';
+        wrapper.style.width = contentWidth + 'px';
+      }
+    });
+  </script>
 </head>
 <body>
   <div class="email-body-wrapper">
