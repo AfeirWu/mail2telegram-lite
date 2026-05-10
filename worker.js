@@ -229,24 +229,29 @@ function buildIframeContent(emailContent) {
   <style>
     html, body { margin: 0; padding: 0; }
   </style>
+  <script>
+    function scale() {
+      var b = document.body;
+      var cw = b.scrollWidth;
+      var sw = window.innerWidth;
+      if (cw > sw && sw > 0) {
+        b.style.transform = 'scale(' + (sw / cw) + ')';
+        b.style.transformOrigin = 'top left';
+        b.style.width = cw + 'px';
+      } else {
+        b.style.transform = '';
+        b.style.width = '';
+      }
+    }
+    function run() {
+      scale();
+      setTimeout(run, 200);
+    }
+    requestAnimationFrame(run);
+  </script>
 </head>
 <body>
 ${innerContent}
-<script>
-(function() {
-  function scale() {
-    var b = document.body;
-    var cw = b.scrollWidth;
-    var sw = window.innerWidth;
-    if (cw > sw && sw > 0) {
-      b.style.transform = 'scale(' + (sw / cw) + ')';
-      b.style.transformOrigin = 'top left';
-      b.style.width = cw + 'px';
-    }
-  }
-  requestAnimationFrame(scale);
-})();
-</script>
 </body>
 </html>`;
 }
