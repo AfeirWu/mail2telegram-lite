@@ -56,23 +56,31 @@ export default {
       return;
     }
 
-    // 使用 postal-mime 解析邮件（参考 tbxark/mail2telegram）
+    // 解析邮件
     const email = await PostalMime.parse(message.raw);
     const textBody = email.text || "";
     const htmlBody = email.html || "";
     const subject = email.subject || "无主题";
     const realFrom = message.headers.get("from") || message.from || "未知发件人";
 
-    // KV 可选：绑定了则支持查看完整邮件功能
-    const mailId = env.DB ? crypto.randomUUID() : null;
+    let previewLink = '';
+
+    // KV 存储：可选，失败不影响主流程
     if (env.DB) {
-      let displayHtml;
-      if (htmlBody) {
-        displayHtml = buildEmailPage(htmlBody, { subject, from: realFrom });
-      } else {
-        displayHtml = buildTextPage(textBody, { subject, from: realFrom });
+      try {
+        let displayHtml;
+        if (htmlBody) {
+          displayHtml = buildEmailPage(htmlBody, { subject, from: realFrom });
+        } else {
+          displayHtml = buildTextPage(textBody, { subject, from: realFrom });
+        }
+
+        const mailId = crypto.randomUUID();
+        await env.DB.put(mailId, displayHtml, { expirationTtl: EMAIL_EXPIRE_TTL });
+        previewLink = `https://${DOMAIN}/mail/${mailId}`;
+      } catch (err) {
+        console.error("KV storage failed:", err);
       }
-      await env.DB.put(mailId, displayHtml, { expirationTtl: EMAIL_EXPIRE_TTL });
     }
 
     // 截取 TG 消息正文预览
@@ -81,24 +89,51 @@ export default {
       preview = preview.substring(0, PREVIEW_MAX_LENGTH) + "\n\n... [Content truncated]";
     }
 
-    const text = `📧 Gmail邮件通知\n\n主题:\n${subject}\n\n正文:\n${preview}\n\n---\n发件人: ${realFrom}`;
+    let text = `📧 Gmail邮件通知\n\n主题:\n${subject}\n\n正文:\n${preview}\n\n---\n发件人: ${realFrom}`;
 
-    const replyMarkup = mailId ? {
-      inline_keyboard: [[
-        { text: "🌐 查看完整邮件内容", url: `https://${DOMAIN}/mail/${mailId}` }
-      ]]
-    } : undefined;
+    // 预览链接追加
+    if (previewLink) {
+      text += `\n\n🌐 ${previewLink}`;
+    }
 
+    // 发送 TG 消息，保证必须成功
     const sendUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-    await fetch(sendUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: CHAT_ID,
-        text: text,
-        reply_markup: replyMarkup
-      })
-    });
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        const response = await fetch(sendUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: CHAT_ID,
+            text: text
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Telegram API error: ${response.status} - ${errorText}`);
+        }
+
+        break;
+      } catch (err) {
+        retries--;
+        console.error(`Telegram send failed (${retries} retries left):`, err);
+        if (retries === 0) {
+          const errorText = `⚠️ 邮件通知发送失败\n\n📧 主题: ${subject}\n📩 发件人: ${realFrom}\n\n错误: ${err.message}\n\n原始内容:\n${preview.substring(0, 1000)}`;
+          await fetch(sendUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: CHAT_ID,
+              text: errorText
+            })
+          });
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    }
   }
 };
 
