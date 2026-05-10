@@ -213,43 +213,29 @@ function buildIframeContent(emailContent) {
 </html>`;
   }
 
-  // 4. HTML 邮件：重置样式 + 包裹在 .email-body 容器中
-  // 清理 inline width/height 避免手机端溢出
-  const cleanedContent = innerContent
-    .replace(/\s*width\s*=\s*["']?\d+["']?/gi, '')
-    .replace(/\s*height\s*=\s*["']?\d+["']?/gi, '')
-    .replace(/\s*style\s*=\s*["'][^"']*(?:width|height)[^"']*["']/gi, '');
-
+  // 4. HTML 邮件：保留原始样式，用 transform 缩放适配手机
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    .email-body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      font-size: 14px;
-      line-height: 1.5;
-      color: #13181D;
-      word-break: break-word;
-      overflow-wrap: break-word;
-      padding: 0;
-      width: 100%;
-      max-width: 100%;
+    html, body { margin: 0; padding: 0; overflow-x: hidden; }
+    .email-body-wrapper {
+      min-width: 600px;
+      transform-origin: top left;
     }
-    img, video { max-width: 100% !important; height: auto !important; }
-    table { max-width: 100% !important; width: 100% !important; border-collapse: collapse; }
-    td, th { max-width: 100% !important; box-sizing: border-box; }
-    div, p, span, a { max-width: 100% !important; }
-    *[style*="width:"] { width: 100% !important; max-width: 100% !important; }
-    *[style*="width "] { width: 100% !important; max-width: 100% !important; }
-    font { max-width: 100% !important; }
+    @media screen and (max-width: 600px) {
+      .email-body-wrapper {
+        transform: scaleX(calc(100vw / 600));
+        width: 600px;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="email-body">
-    ${cleanedContent}
+  <div class="email-body-wrapper">
+    ${innerContent}
   </div>
 </body>
 </html>`;
