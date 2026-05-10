@@ -213,7 +213,7 @@ function buildIframeContent(emailContent) {
 </html>`;
   }
 
-  // 4. HTML 邮件：保留原始样式，手机端动态缩放适配
+  // 4. HTML 邮件：保留原始样式，手机端缩放适配
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -222,29 +222,26 @@ function buildIframeContent(emailContent) {
   <style>
     html, body { margin: 0; padding: 0; }
   </style>
-  <script>
-    function scaleEmail() {
-      var body = document.body;
-      var contentWidth = body.scrollWidth;
-      var screenWidth = window.innerWidth;
-      if (contentWidth > screenWidth && screenWidth > 0) {
-        var scale = screenWidth / contentWidth;
-        body.style.transform = 'scale(' + scale + ')';
-        body.style.transformOrigin = 'top left';
-        body.style.width = contentWidth + 'px';
-        body.style.overflow = 'hidden';
-      }
-    }
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', scaleEmail);
-    } else {
-      scaleEmail();
-    }
-    window.addEventListener('resize', scaleEmail);
-  </script>
 </head>
 <body>
 ${innerContent}
+<script>
+(function() {
+  function scale() {
+    var b = document.body;
+    var contentWidth = b.scrollWidth;
+    var screenWidth = window.innerWidth;
+    if (contentWidth > screenWidth && screenWidth > 0) {
+      var scale = screenWidth / contentWidth;
+      b.style.transform = 'scale(' + scale + ')';
+      b.style.transformOrigin = 'top left';
+      b.style.width = contentWidth + 'px';
+    }
+  }
+  setTimeout(scale, 100);
+  window.addEventListener('resize', scale);
+})();
+</script>
 </body>
 </html>`;
 }
