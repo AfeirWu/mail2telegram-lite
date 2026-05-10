@@ -231,24 +231,22 @@ function buildIframeContent(emailContent) {
   </style>
 </head>
 <body>
+${innerContent}
 <script>
 (function() {
   function scale() {
     var b = document.body;
-    var contentWidth = b.scrollWidth;
-    var screenWidth = window.innerWidth;
-    if (contentWidth > screenWidth && screenWidth > 0) {
-      var s = screenWidth / contentWidth;
-      b.style.transform = 'scale(' + s + ')';
+    var cw = b.scrollWidth;
+    var sw = window.innerWidth;
+    if (cw > sw && sw > 0) {
+      b.style.transform = 'scale(' + (sw / cw) + ')';
       b.style.transformOrigin = 'top left';
-      b.style.width = contentWidth + 'px';
+      b.style.width = cw + 'px';
     }
   }
-  scale();
-  window.addEventListener('resize', scale);
+  requestAnimationFrame(scale);
 })();
 </script>
-${innerContent}
 </body>
 </html>`;
 }
