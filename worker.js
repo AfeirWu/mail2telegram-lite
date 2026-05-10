@@ -214,6 +214,12 @@ function buildIframeContent(emailContent) {
   }
 
   // 4. HTML 邮件：重置样式 + 包裹在 .email-body 容器中
+  // 清理 inline width/height 避免手机端溢出
+  const cleanedContent = innerContent
+    .replace(/\s*width\s*=\s*["']?\d+["']?/gi, '')
+    .replace(/\s*height\s*=\s*["']?\d+["']?/gi, '')
+    .replace(/\s*style\s*=\s*["'][^"']*(?:width|height)[^"']*["']/gi, '');
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -229,13 +235,21 @@ function buildIframeContent(emailContent) {
       word-break: break-word;
       overflow-wrap: break-word;
       padding: 0;
-      ${bodyStyle}
+      width: 100%;
+      max-width: 100%;
     }
+    img, video { max-width: 100% !important; height: auto !important; }
+    table { max-width: 100% !important; width: 100% !important; border-collapse: collapse; }
+    td, th { max-width: 100% !important; box-sizing: border-box; }
+    div, p, span, a { max-width: 100% !important; }
+    *[style*="width:"] { width: 100% !important; max-width: 100% !important; }
+    *[style*="width "] { width: 100% !important; max-width: 100% !important; }
+    font { max-width: 100% !important; }
   </style>
 </head>
 <body>
   <div class="email-body">
-    ${innerContent}
+    ${cleanedContent}
   </div>
 </body>
 </html>`;
