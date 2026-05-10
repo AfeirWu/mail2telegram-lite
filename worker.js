@@ -221,23 +221,18 @@ function buildIframeContent(emailContent) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     html, body { margin: 0; padding: 0; }
-    .email-body-wrapper {
-      display: inline-block;
-      width: auto;
-    }
   </style>
   <script>
     function scaleEmail() {
-      var wrapper = document.querySelector('.email-body-wrapper');
-      if (!wrapper) return;
-      var contentWidth = wrapper.offsetWidth;
+      var body = document.body;
+      var contentWidth = body.scrollWidth;
       var screenWidth = window.innerWidth;
       if (contentWidth > screenWidth && screenWidth > 0) {
         var scale = screenWidth / contentWidth;
-        wrapper.style.transform = 'scale(' + scale + ')';
-        wrapper.style.transformOrigin = 'top left';
-        wrapper.style.width = contentWidth + 'px';
-        document.body.style.overflow = 'hidden';
+        body.style.transform = 'scale(' + scale + ')';
+        body.style.transformOrigin = 'top left';
+        body.style.width = contentWidth + 'px';
+        body.style.overflow = 'hidden';
       }
     }
     if (document.readyState === 'loading') {
@@ -249,9 +244,7 @@ function buildIframeContent(emailContent) {
   </script>
 </head>
 <body>
-  <div class="email-body-wrapper">
-    ${innerContent}
-  </div>
+${innerContent}
 </body>
 </html>`;
 }
