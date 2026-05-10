@@ -221,39 +221,48 @@ function buildIframeContent(emailContent) {
   }
 
   // 4. HTML 邮件：保留原始样式，手机端缩放适配
-  return `<!DOCTYPE html>
+  // 移除内联宽度属性避免溢出，并用 iframe 隔离渲染
+  const strippedContent = innerContent
+    .replace(/\s*width\s*=\s*["']?\d+["']?/gi, '')
+    .replace(/\s*height\s*=\s*["']?\d+["']?/gi, '');
+
+  const innerHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     html, body { margin: 0; padding: 0; }
+    * { max-width: 100% !important; }
+    table { width: auto !important; }
+    img, video { max-width: 100% !important; height: auto !important; }
   </style>
-  <script>
-    function scale() {
-      var b = document.body;
-      var cw = b.scrollWidth;
-      var sw = window.innerWidth;
-      if (cw > sw && sw > 0) {
-        b.style.transform = 'scale(' + (sw / cw) + ')';
-        b.style.transformOrigin = 'top left';
-        b.style.width = cw + 'px';
-      } else {
-        b.style.transform = '';
-        b.style.width = '';
-      }
-    }
-    function run() {
-      scale();
-      setTimeout(run, 200);
-    }
-    requestAnimationFrame(run);
-  </script>
 </head>
 <body>
-${innerContent}
+${strippedContent}
+<script>
+(function(){
+  var b = document.body;
+  function scale() {
+    var cw = b.scrollWidth;
+    var sw = window.innerWidth;
+    if (cw > sw && sw > 0) {
+      b.style.transform = 'scale(' + (sw / cw) + ')';
+      b.style.transformOrigin = 'top left';
+      b.style.width = cw + 'px';
+    } else {
+      b.style.transform = '';
+      b.style.width = '';
+    }
+  }
+  scale();
+  window.addEventListener('resize', scale);
+})();
+</script>
 </body>
 </html>`;
+
+  return innerHtml;
 }
 
 // 清理危险 HTML（防止 XSS）
