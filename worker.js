@@ -146,7 +146,7 @@ function buildEmailPage(htmlBody, meta) {
     .email-iframe-wrap {
       flex: 1;
       width: 100%;
-      overflow: auto;
+      overflow: hidden;
     }
     .email-iframe-wrap iframe {
       width: 100%;
@@ -227,7 +227,7 @@ function buildIframeContent(emailContent) {
     }
   </style>
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
+    function scaleEmail() {
       var wrapper = document.querySelector('.email-body-wrapper');
       if (!wrapper) return;
       var contentWidth = wrapper.offsetWidth;
@@ -237,8 +237,15 @@ function buildIframeContent(emailContent) {
         wrapper.style.transform = 'scale(' + scale + ')';
         wrapper.style.transformOrigin = 'top left';
         wrapper.style.width = contentWidth + 'px';
+        document.body.style.overflow = 'hidden';
       }
-    });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', scaleEmail);
+    } else {
+      scaleEmail();
+    }
+    window.addEventListener('resize', scaleEmail);
   </script>
 </head>
 <body>
