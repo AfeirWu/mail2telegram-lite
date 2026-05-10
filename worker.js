@@ -10,6 +10,11 @@
 
 import PostalMime from 'postal-mime';
 
+// ================= 常量定义 =================
+const PREVIEW_MAX_LENGTH = 2500;
+const EMAIL_EXPIRE_TTL = 604800; // 7 days in seconds
+const EMAIL_CONTAINER_MAX_WIDTH = '700px';
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -41,7 +46,7 @@ export default {
     return new Response("Mail2Telegram Worker is running.", { status: 200 });
   },
 
-  async email(message, env, ctx) {
+  async email(message, env) {
     const BOT_TOKEN = env.TELEGRAM_TOKEN;
     const CHAT_ID = env.TELEGRAM_ID;
     const DOMAIN = env.DOMAIN;
@@ -67,13 +72,13 @@ export default {
       } else {
         displayHtml = buildTextPage(textBody, { subject, from: realFrom });
       }
-      await env.DB.put(mailId, displayHtml, { expirationTtl: 604800 });
+      await env.DB.put(mailId, displayHtml, { expirationTtl: EMAIL_EXPIRE_TTL });
     }
 
     // 截取 TG 消息正文预览
-    let preview = textBody;
-    if (preview.length > 2500) {
-      preview = preview.substring(0, 2500) + "\n\n... [Content truncated]";
+    let preview = textBody.trim();
+    if (preview.length > PREVIEW_MAX_LENGTH) {
+      preview = preview.substring(0, PREVIEW_MAX_LENGTH) + "\n\n... [Content truncated]";
     }
 
     const text = `📧 Gmail邮件通知\n\n主题:\n${subject}\n\n正文:\n${preview}\n\n---\n发件人: ${realFrom}`;
@@ -117,7 +122,7 @@ function buildEmailPage(htmlBody, meta) {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; background-color: #f6f6f6; }
     .email-container {
-      max-width: 700px;
+      max-width: ${EMAIL_CONTAINER_MAX_WIDTH};
       margin: 0 auto;
       background-color: #ffffff;
       height: 100%;
@@ -165,7 +170,7 @@ function buildEmailPage(htmlBody, meta) {
       </div>
     </div>
     <div class="email-iframe-wrap">
-      <iframe sandbox="allow-same-origin allow-popups" srcdoc="${escapeAttr(iframeHtml)}" loading="lazy"></iframe>
+      <iframe sandbox="allow-same-origin allow-popups" srcdoc="${escapeAttr(iframeHtml)}"></iframe>
     </div>
   </div>
 </body>
@@ -241,6 +246,7 @@ function sanitizeHtml(html) {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<svg[\s\S]*?<\/svg>/gi, '')
     .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
     .replace(/href\s*=\s*["']\s*javascript:[^"']*["']/gi, 'href=""')
     .replace(/expression\s*\([^)]*\)/gi, '')
@@ -262,7 +268,7 @@ function buildTextPage(textBody, meta) {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background-color: #f6f6f6; }
     .email-container {
-      max-width: 700px;
+      max-width: ${EMAIL_CONTAINER_MAX_WIDTH};
       margin: 0 auto;
       background-color: #ffffff;
       min-height: 100vh;
@@ -312,12 +318,14 @@ function buildTextPage(textBody, meta) {
 }
 
 function escapeHtml(text) {
-  return text.replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;')
-            .replace(/\{/g, '&#123;');
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+    .replace(/`/g, '&#96;')
+    .replace(/\{/g, '&#123;');
 }
 
 // iframe srcdoc 属性的转义：只需转义 & < > " 即可
