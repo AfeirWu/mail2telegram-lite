@@ -147,12 +147,19 @@ function buildEmailPage(htmlBody, meta) {
       flex: 1;
       width: 100%;
       overflow: hidden;
+      position: relative;
     }
     .email-iframe-wrap iframe {
       width: 100%;
       height: 100%;
       border: none;
       display: block;
+    }
+    @media screen and (max-width: 600px) {
+      .email-iframe-wrap iframe {
+        height: auto;
+        min-height: 100%;
+      }
     }
   </style>
 </head>
@@ -224,7 +231,6 @@ function buildIframeContent(emailContent) {
   </style>
 </head>
 <body>
-${innerContent}
 <script>
 (function() {
   function scale() {
@@ -232,16 +238,17 @@ ${innerContent}
     var contentWidth = b.scrollWidth;
     var screenWidth = window.innerWidth;
     if (contentWidth > screenWidth && screenWidth > 0) {
-      var scale = screenWidth / contentWidth;
-      b.style.transform = 'scale(' + scale + ')';
+      var s = screenWidth / contentWidth;
+      b.style.transform = 'scale(' + s + ')';
       b.style.transformOrigin = 'top left';
       b.style.width = contentWidth + 'px';
     }
   }
-  setTimeout(scale, 100);
+  scale();
   window.addEventListener('resize', scale);
 })();
 </script>
+${innerContent}
 </body>
 </html>`;
 }
