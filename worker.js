@@ -147,19 +147,12 @@ function buildEmailPage(htmlBody, meta) {
       flex: 1;
       width: 100%;
       overflow: hidden;
-      position: relative;
     }
     .email-iframe-wrap iframe {
       width: 100%;
       height: 100%;
       border: none;
       display: block;
-    }
-    @media screen and (max-width: 600px) {
-      .email-iframe-wrap iframe {
-        height: auto;
-        min-height: 100%;
-      }
     }
   </style>
 </head>
@@ -187,12 +180,9 @@ function buildIframeContent(emailContent) {
   // 2. 提取 body 内容；没有 body 标签时移除 head 后保留其余
   let bodyMatch = cleaned.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   let innerContent;
-  let bodyStyle = '';
 
   if (bodyMatch) {
     innerContent = bodyMatch[1];
-    const bodyTagMatch = cleaned.match(/<body[^>]*style="([^"]*)"[^>]*>/i);
-    bodyStyle = bodyTagMatch ? bodyTagMatch[1] : '';
   } else {
     innerContent = cleaned
       .replace(/<head[\s\S]*?<\/head>/i, '')
@@ -240,25 +230,6 @@ function buildIframeContent(emailContent) {
 </head>
 <body>
 ${strippedContent}
-<script>
-(function(){
-  var b = document.body;
-  function scale() {
-    var cw = b.scrollWidth;
-    var sw = window.innerWidth;
-    if (cw > sw && sw > 0) {
-      b.style.transform = 'scale(' + (sw / cw) + ')';
-      b.style.transformOrigin = 'top left';
-      b.style.width = cw + 'px';
-    } else {
-      b.style.transform = '';
-      b.style.width = '';
-    }
-  }
-  scale();
-  window.addEventListener('resize', scale);
-})();
-</script>
 </body>
 </html>`;
 
