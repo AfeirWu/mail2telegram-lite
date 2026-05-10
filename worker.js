@@ -91,9 +91,14 @@ export default {
 
     let text = `📧 Gmail邮件通知\n\n主题:\n${subject}\n\n正文:\n${preview}\n\n---\n发件人: ${realFrom}`;
 
-    // 预览链接追加
+    // 预览链接
+    let replyMarkup;
     if (previewLink) {
-      text += `\n\n🌐 ${previewLink}`;
+      replyMarkup = {
+        inline_keyboard: [[
+          { text: "🌐 查看完整邮件内容", url: previewLink }
+        ]]
+      };
     }
 
     // 发送 TG 消息，保证必须成功
@@ -106,7 +111,8 @@ export default {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: CHAT_ID,
-            text: text
+            text: text,
+            reply_markup: replyMarkup
           })
         });
 
