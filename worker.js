@@ -62,6 +62,7 @@ export default {
     const htmlBody = email.html || "";
     const subject = email.subject || "无主题";
     const realFrom = message.headers.get("from") || message.from || "未知发件人";
+    const realTo = message.headers.get("to") || message.to || "未知收件人";
 
     let previewLink = '';
 
@@ -70,9 +71,9 @@ export default {
       try {
         let displayHtml;
         if (htmlBody) {
-          displayHtml = buildEmailPage(htmlBody, { subject, from: realFrom });
+          displayHtml = buildEmailPage(htmlBody, { subject, from: realFrom, to: realTo });
         } else {
-          displayHtml = buildTextPage(textBody, { subject, from: realFrom });
+          displayHtml = buildTextPage(textBody, { subject, from: realFrom, to: realTo });
         }
 
         const mailId = crypto.randomUUID();
@@ -89,8 +90,7 @@ export default {
       preview = preview.substring(0, PREVIEW_MAX_LENGTH) + "\n\n... [Content truncated]";
     }
 
-    // 收件人
-    const realTo = message.headers.get("to") || message.to || "未知收件人";
+    // 收件人已在上方解析（构建邮件预览页时需要用到）
 
     // 防止 TG 自动识别链接：在 URL 字符间插入零宽空格
     preview = preview.replace(/(https?:\/\/[^\s<>"]+)/gi, (url) => {
@@ -163,9 +163,10 @@ export default {
 // 2) iframe 内置自适应缩放脚本：内容超出视口宽度时按比例缩放，杜绝横向滚动
 // 3) 不使用 !important 覆盖原邮件样式，让邮件作者的设计意图优先
 function buildEmailPage(htmlBody, meta) {
-  const { subject, from } = meta;
+  const { subject, from, to } = meta;
   const escapedSubject = escapeHtml(subject);
   const escapedFrom = escapeHtml(from);
+  const escapedTo = escapeHtml(to);
 
   const iframeHtml = buildIframeContent(htmlBody);
 
@@ -225,7 +226,8 @@ function buildEmailPage(htmlBody, meta) {
     <div class="email-header">
       <h1>${escapedSubject}</h1>
       <div class="email-meta">
-        <strong>发件人：</strong>${escapedFrom}
+        <div><strong>发件人：</strong>${escapedFrom}</div>
+        <div><strong>收件人：</strong>${escapedTo}</div>
       </div>
     </div>
     <div class="email-iframe-wrap">
@@ -355,9 +357,10 @@ function sanitizeHtml(html) {
 }
 
 function buildTextPage(textBody, meta) {
-  const { subject, from } = meta;
+  const { subject, from, to } = meta;
   const escapedSubject = escapeHtml(subject);
   const escapedFrom = escapeHtml(from);
+  const escapedTo = escapeHtml(to);
   const escapedBody = escapeHtml(textBody);
   return `<!DOCTYPE html>
 <html lang="zh">
@@ -409,7 +412,8 @@ function buildTextPage(textBody, meta) {
     <div class="email-header">
       <h1>${escapedSubject}</h1>
       <div class="email-meta">
-        <strong>发件人：</strong>${escapedFrom}
+        <div><strong>发件人：</strong>${escapedFrom}</div>
+        <div><strong>收件人：</strong>${escapedTo}</div>
       </div>
     </div>
     <div class="email-body">${escapedBody}</div>
