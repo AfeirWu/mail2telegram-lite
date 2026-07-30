@@ -158,13 +158,15 @@ export default {
 };
 
 // ================= 构建邮件 HTML 预览页面 =================
-// 参考 cloud-mail ShadowHtml 组件：使用 iframe srcdoc 做样式隔离
+// 核心策略：
+// 1) 保留邮件原始 <style>、<svg>、内联 width/height、class、style 属性
+// 2) iframe 内置自适应缩放脚本：内容超出视口宽度时按比例缩放，杜绝横向滚动
+// 3) 不使用 !important 覆盖原邮件样式，让邮件作者的设计意图优先
 function buildEmailPage(htmlBody, meta) {
   const { subject, from } = meta;
   const escapedSubject = escapeHtml(subject);
   const escapedFrom = escapeHtml(from);
 
-  // buildIframeContent 内部处理：sanitize + 提取 body + 重置样式 + 纯文本判断
   const iframeHtml = buildIframeContent(htmlBody);
 
   return `<!DOCTYPE html>
@@ -189,6 +191,7 @@ function buildEmailPage(htmlBody, meta) {
       background-color: #f6f6f6;
       border-bottom: 1px solid #e8e8e8;
       padding: 16px 24px;
+      flex-shrink: 0;
     }
     .email-header h1 {
       font-size: 18px;
@@ -206,6 +209,7 @@ function buildEmailPage(htmlBody, meta) {
     .email-iframe-wrap {
       flex: 1;
       width: 100%;
+      min-height: 0;
       overflow: hidden;
     }
     .email-iframe-wrap iframe {
@@ -232,7 +236,7 @@ function buildEmailPage(htmlBody, meta) {
 </html>`;
 }
 
-// 参考 cloud-mail ShadowHtml：清理危险内容 → 提取 body 内容 → 重置样式 → 包裹在独立容器中
+// 构建 iframe 内部内容：保留原始样式 + 自动缩放响应式
 function buildIframeContent(emailContent) {
   // 1. 清理 XSS 危险内容
   const cleaned = sanitizeHtml(emailContent);
@@ -251,7 +255,7 @@ function buildIframeContent(emailContent) {
   }
 
   // 3. 判断是否为纯文本（没有 HTML 标签则当纯文本处理）
-  const isPlainText = !/<(img|a|table|div|p|br|span|b|i|strong|em|h[1-6]|ul|ol|li|blockquote)\b/i.test(innerContent);
+  const isPlainText = !/<(img|a|table|div|p|br|span|b|i|strong|em|h[1-6]|ul|ol|li|blockquote|svg|td|tr)\b/i.test(innerContent);
 
   if (isPlainText) {
     return `<!DOCTYPE html>
@@ -260,52 +264,94 @@ function buildIframeContent(emailContent) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { margin: 0; padding: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-size: 14px; line-height: 1.5; }
+    body { margin: 0; padding: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-size: 14px; line-height: 1.5; word-break: break-word; }
     pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
   </style>
 </head>
-<body>
-  <pre>${innerContent}</pre>
-</body>
+<body><pre>${escapeHtml(innerContent)}</pre></body>
 </html>`;
   }
 
-  // 4. HTML 邮件：保留原始样式，手机端缩放适配
-  // 移除内联宽度属性避免溢出，并用 iframe 隔离渲染
-  const strippedContent = innerContent
-    .replace(/\s*width\s*=\s*["']?\d+["']?/gi, '')
-    .replace(/\s*height\s*=\s*["']?\d+["']?/gi, '');
-
+  // 4. HTML 邮件：保留所有原始样式，仅注入极简兜底
+  // - 保留 <style>、<svg>、内联 width/height、class、style 属性
+  // - 不使用 !important，让邮件原样式优先
+  // - 自动缩放脚本：内容超出视口宽度时按比例缩小，确保不出现横向滚动条
   const innerHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <style>
     html, body { margin: 0; padding: 0; }
-    * { max-width: 100% !important; }
-    table { width: auto !important; }
-    img, video { max-width: 100% !important; height: auto !important; }
+    img, video { max-width: 100%; height: auto; }
   </style>
 </head>
 <body>
-${strippedContent}
+${innerContent}
+<script>
+(function() {
+  // 自适应缩放：检测内容实际宽度，超出视口时按比例缩小
+  // 这样在手机上打开宽度为 600-700px 的邮件也会自动适配，不会出现横向滚动
+  function fit() {
+    var body = document.body;
+    var html = document.documentElement;
+    var docW = Math.max(
+      body.scrollWidth, body.offsetWidth,
+      html.scrollWidth, html.offsetWidth,
+      html.clientWidth
+    );
+    var viewW = window.innerWidth;
+    if (docW > viewW && viewW > 0) {
+      var scale = viewW / docW;
+      body.style.transformOrigin = 'top left';
+      body.style.transform = 'scale(' + scale + ')';
+      // 缩放后 body 实际占据的高度变小，需要调整容器避免出现多余空白
+      html.style.height = (body.scrollHeight * scale) + 'px';
+    } else {
+      body.style.transform = '';
+      body.style.transformOrigin = '';
+      html.style.height = '';
+    }
+  }
+  function run() {
+    fit();
+    // 图片等资源可能异步改变尺寸，延迟再调整
+    setTimeout(fit, 100);
+    setTimeout(fit, 500);
+  }
+  run();
+  window.addEventListener('resize', run);
+  window.addEventListener('load', run);
+})();
+</script>
 </body>
 </html>`;
 
   return innerHtml;
 }
 
-// 清理危险 HTML（防止 XSS）
+// 最小化清洗 HTML：只去除真正危险的内容，保留样式与图形
 function sanitizeHtml(html) {
   return html
+    // 危险脚本与对象
     .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<svg[\s\S]*?<\/svg>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<object[\s\S]*?<\/object>/gi, '')
+    .replace(/<embed[^>]*>/gi, '')
+    .replace(/<applet[\s\S]*?<\/applet>/gi, '')
+    // 危险的 meta / base / link（重定向、外部 CSS 加载）
+    .replace(/<meta[^>]*http-equiv[^>]*>/gi, '')
+    .replace(/<base[^>]*>/gi, '')
+    .replace(/<link[^>]*>/gi, '')
+    // 事件属性
     .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
-    .replace(/href\s*=\s*["']\s*javascript:[^"']*["']/gi, 'href=""')
+    // javascript: 协议
+    .replace(/href\s*=\s*["']\s*javascript:[^"']*["']/gi, 'href="#"')
+    .replace(/src\s*=\s*["']\s*javascript:[^"']*["']/gi, 'src=""')
+    // CSS 攻击向量
     .replace(/expression\s*\([^)]*\)/gi, '')
-    .replace(/url\s*\(\s*["']?\s*javascript:[^)]*["']?\s*\)/gi, 'url("")');
+    .replace(/url\s*\(\s*["']?\s*javascript:[^)]*["']?\s*\)/gi, 'url()')
+    // 显式保留：<style>、<svg>、width/height/class/style 属性
 }
 
 function buildTextPage(textBody, meta) {
