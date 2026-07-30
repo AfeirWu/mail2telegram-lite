@@ -99,6 +99,12 @@ export default {
 
     let text = `📧 Gmail邮件通知\n\n📨 收件人: ${realTo}\n📧 主题: ${subject}\n👤 发件人: ${realFrom}\n\n${preview}`;
 
+    // TG 消息总长度不能超过 4096
+    const TG_MAX_LENGTH = 4096;
+    if (text.length > TG_MAX_LENGTH) {
+      text = text.substring(0, TG_MAX_LENGTH - 20) + "\n\n... [Message truncated]";
+    }
+
     // 预览链接
     let replyMarkup;
     if (previewLink) {
