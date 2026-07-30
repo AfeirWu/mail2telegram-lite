@@ -284,7 +284,8 @@ function buildIframeContent(emailContent) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <style>
-    html, body { margin: 0; padding: 0; }
+    html { overflow-x: hidden; }
+    body { margin: 0; padding: 0; }
     img, video { max-width: 100%; height: auto; }
   </style>
 </head>
@@ -292,27 +293,24 @@ function buildIframeContent(emailContent) {
 ${innerContent}
 <script>
 (function() {
-  // 自适应缩放：检测内容实际宽度，超出视口时按比例缩小
-  // 这样在手机上打开宽度为 600-700px 的邮件也会自动适配，不会出现横向滚动
+  // 自适应缩放：内容超出视口宽度时按比例缩小，确保不出现横向滚动条
+  // 注意：transform: scale 只缩放视觉不影响布局，必须配合 overflow-x:hidden 才能消除横向滚动
   function fit() {
     var body = document.body;
-    var html = document.documentElement;
-    var docW = Math.max(
-      body.scrollWidth, body.offsetWidth,
-      html.scrollWidth, html.offsetWidth,
-      html.clientWidth
-    );
+    var docW = body.scrollWidth;
     var viewW = window.innerWidth;
     if (docW > viewW && viewW > 0) {
       var scale = viewW / docW;
       body.style.transformOrigin = 'top left';
       body.style.transform = 'scale(' + scale + ')';
-      // 缩放后 body 实际占据的高度变小，需要调整容器避免出现多余空白
-      html.style.height = (body.scrollHeight * scale) + 'px';
+      // 缩放后 body 实际占据高度变小，固定高度并裁切 overflow 避免下方留白
+      body.style.overflow = 'hidden';
+      body.style.height = (body.scrollHeight * scale) + 'px';
     } else {
       body.style.transform = '';
       body.style.transformOrigin = '';
-      html.style.height = '';
+      body.style.overflow = '';
+      body.style.height = '';
     }
   }
   function run() {
