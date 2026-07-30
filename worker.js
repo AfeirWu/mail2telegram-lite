@@ -89,7 +89,15 @@ export default {
       preview = preview.substring(0, PREVIEW_MAX_LENGTH) + "\n\n... [Content truncated]";
     }
 
-    let text = `📧 Gmail邮件通知\n\n主题:\n${subject}\n\n正文:\n${preview}\n\n---\n发件人: ${realFrom}`;
+    // 收件人
+    const realTo = message.headers.get("to") || message.to || "未知收件人";
+
+    // 防止 TG 自动识别链接：在 URL 字符间插入零宽空格
+    preview = preview.replace(/(https?:\/\/[^\s<>"]+)/gi, (url) => {
+      return url.split('').join('​');
+    });
+
+    let text = `📧 Gmail邮件通知\n\n📨 收件人: ${realTo}\n📧 主题: ${subject}\n👤 发件人: ${realFrom}\n\n${preview}`;
 
     // 预览链接
     let replyMarkup;
@@ -126,7 +134,7 @@ export default {
         retries--;
         console.error(`Telegram send failed (${retries} retries left):`, err);
         if (retries === 0) {
-          const errorText = `⚠️ 邮件通知发送失败\n\n📧 主题: ${subject}\n📩 发件人: ${realFrom}\n\n错误: ${err.message}\n\n原始内容:\n${preview.substring(0, 1000)}`;
+          const errorText = `⚠️ 邮件通知发送失败\n\n📨 收件人: ${realTo}\n📧 主题: ${subject}\n👤 发件人: ${realFrom}\n\n错误: ${err.message}\n\n原始内容:\n${preview.substring(0, 1000)}`;
           await fetch(sendUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
