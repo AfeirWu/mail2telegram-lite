@@ -284,8 +284,7 @@ function buildIframeContent(emailContent) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <style>
-    html { overflow-x: hidden; }
-    body { margin: 0; padding: 0; }
+    html, body { margin: 0; padding: 0; }
     img, video { max-width: 100%; height: auto; }
   </style>
 </head>
@@ -294,23 +293,17 @@ ${innerContent}
 <script>
 (function() {
   // 自适应缩放：内容超出视口宽度时按比例缩小，确保不出现横向滚动条
-  // 注意：transform: scale 只缩放视觉不影响布局，必须配合 overflow-x:hidden 才能消除横向滚动
+  // 关键：必须用 CSS zoom（同步缩放布局与视觉），不能用 transform: scale
+  // 因为 transform 只缩放视觉不改 layout，会导致 body 实际宽度仍超出 viewport，
+  // 此时要么出现横向滚动条，要么被 overflow:hidden 裁掉真实内容。
   function fit() {
     var body = document.body;
     var docW = body.scrollWidth;
     var viewW = window.innerWidth;
     if (docW > viewW && viewW > 0) {
-      var scale = viewW / docW;
-      body.style.transformOrigin = 'top left';
-      body.style.transform = 'scale(' + scale + ')';
-      // 缩放后 body 实际占据高度变小，固定高度并裁切 overflow 避免下方留白
-      body.style.overflow = 'hidden';
-      body.style.height = (body.scrollHeight * scale) + 'px';
+      body.style.zoom = (viewW / docW);
     } else {
-      body.style.transform = '';
-      body.style.transformOrigin = '';
-      body.style.overflow = '';
-      body.style.height = '';
+      body.style.zoom = '';
     }
   }
   function run() {
